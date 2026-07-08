@@ -1,0 +1,6308 @@
+明白了宝宝！我直接输出代码，你拿去给本地 agent 执行 ✅
+
+那我们按顺序来，Phase 1 先把后端骨架全部写完。
+
+---
+
+## Phase 1 — 后端骨架全部代码
+
+### 第一步：创建目录结构
+
+```bash
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\api\routes"
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\core"
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\models"
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\schemas"
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\services"
+mkdir -p "F:\agent项目\AI简历招聘\backend\app\utils"
+mkdir -p "F:\agent项目\AI简历招聘\backend\tests"
+mkdir -p "F:\agent项目\AI简历招聘\frontend\src\components"
+mkdir -p "F:\agent项目\AI简历招聘\frontend\src\pages"
+mkdir -p "F:\agent项目\AI简历招聘\frontend\src\services"
+mkdir -p "F:\agent项目\AI简历招聘\docs"
+mkdir -p "F:\agent项目\AI简历招聘\scripts"
+```
+
+---
+
+### 第二步：所有文件内容
+
+#### `backend/requirements.txt`
+
+```txt
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+httpx==0.27.0
+openai==1.30.1
+PyPDF2==3.0.1
+python-docx==1.1.2
+Pillow==10.3.0
+pytest==8.2.0
+pytest-asyncio==0.23.6
+```
+
+---
+
+#### `backend/.env.example`
+
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_recruitment
+
+# JWT
+SECRET_KEY=your-super-secret-key-change-this-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# AI (OpenAI compatible)
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
+
+# File Upload
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=10485760
+
+# App
+APP_NAME=AI Recruitment System
+DEBUG=True
+```
+
+---
+
+#### `backend/app/__init__.py`
+
+```python
+```
+
+#### `backend/app/api/__init__.py`
+
+```python
+```
+
+#### `backend/app/api/routes/__init__.py`
+
+```python
+```
+
+#### `backend/app/core/__init__.py`
+
+```python
+```
+
+#### `backend/app/models/__init__.py`
+
+```python
+```
+
+#### `backend/app/schemas/__init__.py`
+
+```python
+```
+
+#### `backend/app/services/__init__.py`
+
+```python
+```
+
+#### `backend/app/utils/__init__.py`
+
+```python
+```
+
+#### `backend/tests/__init__.py`
+
+```python
+```
+
+---
+
+#### `backend/app/core/config.py`
+
+```python
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    # App
+    APP_NAME: str = "AI Recruitment System"
+    DEBUG: bool = True
+
+    # Database
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/ai_recruitment"
+
+    # JWT
+    SECRET_KEY: str = "change-this-secret-key"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # AI
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    AI_MODEL: str = "gpt-4o-mini"
+
+    # File Upload
+    UPLOAD_DIR: str = "./uploads"
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+settings = Settings()
+```
+
+---
+
+#### `backend/app/core/database.py`
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase
+from app.core.config import settings
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+
+async def get_db() -> AsyncSession:
+    """FastAPI dependency: yields a database session."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def init_db():
+    """Create all tables on startup."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+```
+
+---
+
+#### `backend/app/core/security.py`
+
+```python
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Any
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import settings
+from app.core.database import get_db
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def create_access_token(subject: Any, expires_delta: Optional[timedelta] = None) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    payload = {"sub": str(subject), "exp": expire}
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    user_id = decode_token(token)
+    if user_id is None:
+        raise credentials_exception
+
+    from app.models.user import User
+    from sqlalchemy import select
+
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+async def get_current_active_user(current_user=Depends(get_current_user)):
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+```
+
+---
+
+#### `backend/app/models/user.py`
+
+```python
+from datetime import datetime, timezone
+from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column
+import enum
+from app.core.database import Base
+
+
+class UserRole(str, enum.Enum):
+    job_seeker = "job_seeker"   # 求职者
+    employer = "employer"       # 招聘方
+    admin = "admin"             # 管理员
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.job_seeker)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+```
+
+---
+
+#### `backend/app/models/job.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+from app.core.database import Base
+
+
+class JobStatus(str, enum.Enum):
+    draft = "draft"
+    active = "active"
+    closed = "closed"
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    employer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    company: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    requirements: Mapped[str] = mapped_column(Text, nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(100))
+    salary_min: Mapped[Optional[int]] = mapped_column(Integer)
+    salary_max: Mapped[Optional[int]] = mapped_column(Integer)
+    status: Mapped[JobStatus] = mapped_column(SAEnum(JobStatus), default=JobStatus.active)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    employer: Mapped["User"] = relationship("User", foreign_keys=[employer_id])
+```
+
+---
+
+#### `backend/app/models/resume.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Float
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.core.database import Base
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # 存文件路径，不存 BLOB（升级点之一）
+    file_path: Mapped[Optional[str]] = mapped_column(String(500))
+    file_name: Mapped[Optional[str]] = mapped_column(String(200))
+    # 解析出的纯文本内容，供 AI 分析
+    parsed_content: Mapped[Optional[str]] = mapped_column(Text)
+    skills: Mapped[Optional[str]] = mapped_column(Text)       # JSON 字符串
+    experience_years: Mapped[Optional[int]] = mapped_column(Integer)
+    education: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+```
+
+---
+
+#### `backend/app/models/application.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Float, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+from app.core.database import Base
+
+
+class ApplicationStatus(str, enum.Enum):
+    pending = "pending"         # 待处理
+    reviewed = "reviewed"       # 已查看
+    shortlisted = "shortlisted" # 入围
+    rejected = "rejected"       # 拒绝
+    accepted = "accepted"       # 录用
+
+
+class Application(Base):
+    __tablename__ = "applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    applicant_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"), nullable=False)
+    status: Mapped[ApplicationStatus] = mapped_column(
+        SAEnum(ApplicationStatus), default=ApplicationStatus.pending
+    )
+    # AI 打分相关字段
+    ai_score: Mapped[Optional[float]] = mapped_column(Float)          # 0-100 综合分
+    ai_analysis: Mapped[Optional[str]] = mapped_column(Text)          # AI 分析文本
+    ai_strengths: Mapped[Optional[str]] = mapped_column(Text)         # 优势 JSON
+    ai_weaknesses: Mapped[Optional[str]] = mapped_column(Text)        # 不足 JSON
+    cover_letter: Mapped[Optional[str]] = mapped_column(Text)         # 求职信
+    employer_notes: Mapped[Optional[str]] = mapped_column(Text)       # HR 备注
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    job: Mapped["Job"] = relationship("Job", foreign_keys=[job_id])
+    applicant: Mapped["User"] = relationship("User", foreign_keys=[applicant_id])
+    resume: Mapped["Resume"] = relationship("Resume", foreign_keys=[resume_id])
+```
+
+---
+
+#### `backend/app/schemas/user.py`
+
+```python
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
+from app.models.user import UserRole
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: UserRole = UserRole.job_seeker
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
+class UserOut(UserBase):
+    id: int
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    user_id: Optional[int] = None
+```
+
+---
+
+#### `backend/app/schemas/job.py`
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.models.job import JobStatus
+
+
+class JobBase(BaseModel):
+    title: str
+    company: str
+    description: str
+    requirements: str
+    location: Optional[str] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+
+
+class JobCreate(JobBase):
+    pass
+
+
+class JobUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    requirements: Optional[str] = None
+    location: Optional[str] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    status: Optional[JobStatus] = None
+
+
+class JobOut(JobBase):
+    id: int
+    employer_id: int
+    status: JobStatus
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+#### `backend/app/schemas/resume.py`
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+class ResumeBase(BaseModel):
+    title: str
+
+
+class ResumeCreate(ResumeBase):
+    pass
+
+
+class ResumeUpdate(BaseModel):
+    title: Optional[str] = None
+    skills: Optional[str] = None
+    experience_years: Optional[int] = None
+    education: Optional[str] = None
+
+
+class ResumeOut(ResumeBase):
+    id: int
+    user_id: int
+    file_name: Optional[str]
+    skills: Optional[str]
+    experience_years: Optional[int]
+    education: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+#### `backend/app/schemas/application.py`
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.models.application import ApplicationStatus
+
+
+class ApplicationCreate(BaseModel):
+    job_id: int
+    resume_id: int
+    cover_letter: Optional[str] = None
+
+
+class ApplicationUpdate(BaseModel):
+    status: Optional[ApplicationStatus] = None
+    employer_notes: Optional[str] = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_id: int
+    applicant_id: int
+    resume_id: int
+    status: ApplicationStatus
+    ai_score: Optional[float]
+    ai_analysis: Optional[str]
+    ai_strengths: Optional[str]
+    ai_weaknesses: Optional[str]
+    cover_letter: Optional[str]
+    applied_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+#### `backend/app/api/routes/auth.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.core.database import get_db
+from app.core.security import verify_password, get_password_hash, create_access_token
+from app.models.user import User
+from app.schemas.user import UserCreate, UserOut, Token
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Check duplicate email
+    result = await db.execute(select(User).where(User.email == user_in.email))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=user_in.email,
+        hashed_password=get_password_hash(user_in.password),
+        full_name=user_in.full_name,
+        role=user_in.role,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.email == form_data.username))
+    user = result.scalar_one_or_none()
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+
+    access_token = create_access_token(subject=user.id)
+    return {"access_token": access_token, "token_type": "bearer"}
+```
+
+---
+
+#### `backend/app/api/routes/users.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.schemas.user import UserOut, UserUpdate
+from app.models.user import User
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me", response_model=UserOut)
+async def get_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
+
+
+@router.put("/me", response_model=UserOut)
+async def update_me(
+    user_in: UserUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user_in.full_name is not None:
+        current_user.full_name = user_in.full_name
+    if user_in.email is not None:
+        current_user.email = user_in.email
+    await db.flush()
+    await db.refresh(current_user)
+    return current_user
+```
+
+---
+
+#### `backend/app/api/routes/jobs.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List, Optional
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.job import Job, JobStatus
+from app.models.user import User, UserRole
+from app.schemas.job import JobCreate, JobUpdate, JobOut
+
+router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+@router.get("/", response_model=List[JobOut])
+async def list_jobs(
+    skip: int = 0,
+    limit: int = Query(default=20, le=100),
+    keyword: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Job).where(Job.status == JobStatus.active)
+    if keyword:
+        query = query.where(Job.title.ilike(f"%{keyword}%"))
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{job_id}", response_model=JobOut)
+async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/", response_model=JobOut, status_code=status.HTTP_201_CREATED)
+async def create_job(
+    job_in: JobCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.employer, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only employers can post jobs")
+
+    job = Job(**job_in.model_dump(), employer_id=current_user.id)
+    db.add(job)
+    await db.flush()
+    await db.refresh(job)
+    return job
+
+
+@router.put("/{job_id}", response_model=JobOut)
+async def update_job(
+    job_id: int,
+    job_in: JobUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_id != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    for field, value in job_in.model_dump(exclude_unset=True).items():
+        setattr(job, field, value)
+    await db.flush()
+    await db.refresh(job)
+    return job
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_id != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.delete(job)
+```
+
+---
+
+#### `backend/app/api/routes/resumes.py`
+
+```python
+import os
+import shutil
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.core.config import settings
+from app.models.resume import Resume
+from app.models.user import User
+from app.schemas.resume import ResumeCreate, ResumeUpdate, ResumeOut
+from app.utils.file_parser
+
+> ❌ 消息流出现异常
+```
+继续从 `resumes.py` 写完，宝宝 💪
+
+---
+
+#### `backend/app/api/routes/resumes.py`
+
+```python
+import os
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.core.config import settings
+from app.models.resume import Resume
+from app.models.user import User
+from app.schemas.resume import ResumeUpdate, ResumeOut
+
+router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx"}
+
+
+@router.get("/", response_model=List[ResumeOut])
+async def list_my_resumes(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Resume).where(Resume.user_id == current_user.id))
+    return result.scalars().all()
+
+
+@router.get("/{resume_id}", response_model=ResumeOut)
+async def get_resume(
+    resume_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return resume
+
+
+@router.post("/", response_model=ResumeOut, status_code=status.HTTP_201_CREATED)
+async def upload_resume(
+    title: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Validate file extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Supported: {ALLOWED_EXTENSIONS}",
+        )
+
+    # Validate file size
+    content = await file.read()
+    if len(content) > settings.MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    # Save file to disk
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(settings.UPLOAD_DIR, unique_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Parse text content from the file
+    from app.utils.file_parser import parse_resume_file
+    parsed_content = parse_resume_file(file_path, ext)
+
+    resume = Resume(
+        user_id=current_user.id,
+        title=title,
+        file_path=file_path,
+        file_name=file.filename,
+        parsed_content=parsed_content,
+    )
+    db.add(resume)
+    await db.flush()
+    await db.refresh(resume)
+    return resume
+
+
+@router.put("/{resume_id}", response_model=ResumeOut)
+async def update_resume(
+    resume_id: int,
+    resume_in: ResumeUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    for field, value in resume_in.model_dump(exclude_unset=True).items():
+        setattr(resume, field, value)
+    await db.flush()
+    await db.refresh(resume)
+    return resume
+
+
+@router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_resume(
+    resume_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Delete physical file
+    if resume.file_path and os.path.exists(resume.file_path):
+        os.remove(resume.file_path)
+
+    await db.delete(resume)
+```
+
+---
+
+#### `backend/app/api/routes/applications.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.application import Application, ApplicationStatus
+from app.models.job import Job
+from app.models.resume import Resume
+from app.models.user import User, UserRole
+from app.schemas.application import ApplicationCreate, ApplicationUpdate, ApplicationOut
+
+router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+@router.post("/", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
+async def apply_for_job(
+    app_in: ApplicationCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Must be a job seeker
+    if current_user.role != UserRole.job_seeker:
+        raise HTTPException(status_code=403, detail="Only job seekers can apply")
+
+    # Check job exists and is active
+    job_result = await db.execute(select(Job).where(Job.id == app_in.job_id))
+    job = job_result.scalar_one_or_none()
+    if not job or job.status.value != "active":
+        raise HTTPException(status_code=404, detail="Job not found or closed")
+
+    # Check resume belongs to current user
+    resume_result = await db.execute(select(Resume).where(Resume.id == app_in.resume_id))
+    resume = resume_result.scalar_one_or_none()
+    if not resume or resume.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Invalid resume")
+
+    # Prevent duplicate applications
+    dup = await db.execute(
+        select(Application).where(
+            Application.job_id == app_in.job_id,
+            Application.applicant_id == current_user.id,
+        )
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Already applied to this job")
+
+    application = Application(
+        job_id=app_in.job_id,
+        applicant_id=current_user.id,
+        resume_id=app_in.resume_id,
+        cover_letter=app_in.cover_letter,
+    )
+    db.add(application)
+    await db.flush()
+    await db.refresh(application)
+
+    # Trigger AI scoring in background (non-blocking)
+    from app.services.ai_service import score_application_background
+    import asyncio
+    asyncio.create_task(
+        score_application_background(application.id, job, resume)
+    )
+
+    return application
+
+
+@router.get("/my", response_model=List[ApplicationOut])
+async def my_applications(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Application).where(Application.applicant_id == current_user.id)
+    )
+    return result.scalars().all()
+
+
+@router.get("/job/{job_id}", response_model=List[ApplicationOut])
+async def applications_for_job(
+    job_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Only the job owner or admin can view all applicants
+    job_result = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_id != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    result = await db.execute(
+        select(Application).where(Application.job_id == job_id)
+    )
+    return result.scalars().all()
+
+
+@router.put("/{application_id}", response_model=ApplicationOut)
+async def update_application_status(
+    application_id: int,
+    app_in: ApplicationUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Only employer who owns the job or admin can update status
+    job_result = await db.execute(select(Job).where(Job.id == application.job_id))
+    job = job_result.scalar_one_or_none()
+    if job.employer_id != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    for field, value in app_in.model_dump(exclude_unset=True).items():
+        setattr(application, field, value)
+    await db.flush()
+    await db.refresh(application)
+    return application
+```
+
+---
+
+#### `backend/app/services/ai_service.py`
+
+```python
+import json
+import logging
+from typing import Optional
+from openai import AsyncOpenAI
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+client = AsyncOpenAI(
+    api_key=settings.OPENAI_API_KEY,
+    base_url=settings.OPENAI_BASE_URL,
+)
+
+SCORE_PROMPT_TEMPLATE = """
+You are an expert HR recruiter and talent assessment specialist.
+
+Analyze the following resume against the job requirements and provide a structured evaluation.
+
+## Job Information
+Title: {job_title}
+Company: {company}
+Requirements:
+{requirements}
+
+## Resume Content
+{resume_content}
+
+## Instructions
+Please respond with a JSON object in exactly this format:
+{{
+  "score": <integer 0-100>,
+  "summary": "<2-3 sentence overall assessment>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "weaknesses": ["<weakness 1>", "<weakness 2>"],
+  "recommendation": "<hire | consider | reject>"
+}}
+
+Be objective, concise, and base your assessment purely on the match between the resume and job requirements.
+"""
+
+
+async def score_resume(
+    job_title: str,
+    company: str,
+    requirements: str,
+    resume_content: str,
+) -> dict:
+    """
+    Call the AI model to score a resume against a job posting.
+    Returns a dict with score, summary, strengths, weaknesses, recommendation.
+    """
+    prompt = SCORE_PROMPT_TEMPLATE.format(
+        job_title=job_title,
+        company=company,
+        requirements=requirements,
+        resume_content=resume_content[:4000],  # Trim to avoid token overflow
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.AI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error(f"AI response JSON parse error: {e}")
+        return _fallback_score()
+    except Exception as e:
+        logger.error(f"AI scoring failed: {e}")
+        return _fallback_score()
+
+
+def _fallback_score() -> dict:
+    """Return a neutral score when AI call fails."""
+    return {
+        "score": 50,
+        "summary": "AI scoring unavailable. Manual review required.",
+        "strengths": [],
+        "weaknesses": [],
+        "recommendation": "consider",
+    }
+
+
+async def score_application_background(
+    application_id: int,
+    job,
+    resume,
+):
+    """
+    Background task: score an application and write results back to DB.
+    Runs after the HTTP response is already returned to the client.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.models.application import Application
+    from sqlalchemy import select
+
+    resume_content = resume.parsed_content or resume.title
+
+    result = await score_resume(
+        job_title=job.title,
+        company=job.company,
+        requirements=job.requirements,
+        resume_content=resume_content,
+    )
+
+    async with AsyncSessionLocal() as db:
+        try:
+            query = await db.execute(
+                select(Application).where(Application.id == application_id)
+            )
+            application = query.scalar_one_or_none()
+            if application:
+                application.ai_score = float(result.get("score", 50))
+                application.ai_analysis = result.get("summary", "")
+                application.ai_strengths = json.dumps(result.get("strengths", []))
+                application.ai_weaknesses = json.dumps(result.get("weaknesses", []))
+                await db.commit()
+                logger.info(f"AI scored application {application_id}: {application.ai_score}")
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to save AI score for application {application_id}: {e}")
+```
+
+---
+
+#### `backend/app/utils/file_parser.py`
+
+```python
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def parse_resume_file(file_path: str, ext: str) -> Optional[str]:
+    """
+    Extract plain text from uploaded resume files.
+    Supports: .pdf, .docx, .doc
+    """
+    try:
+        if ext == ".pdf":
+            return _parse_pdf(file_path)
+        elif ext in (".docx", ".doc"):
+            return _parse_docx(file_path)
+        else:
+            return None
+    except Exception as e:
+        logger.error(f"Failed to parse resume {file_path}: {e}")
+        return None
+
+
+def _parse_pdf(file_path: str) -> str:
+    import PyPDF2
+    text_parts = []
+    with open(file_path, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+    return "\n".join(text_parts)
+
+
+def _parse_docx(file_path: str) -> str:
+    from docx import Document
+    doc = Document(file_path)
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)
+```
+
+---
+
+#### `backend/app/main.py`
+
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from app.core.config import settings
+from app.core.database import init_db
+from app.api.routes import auth, users, jobs, resumes, applications
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: create tables
+    await init_db()
+    yield
+    # Shutdown: nothing needed for now
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version="2.0.0",
+    description="AI-powered recruitment system with resume scoring",
+    lifespan=lifespan,
+)
+
+# CORS — allow frontend dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register all routers
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
+app.include_router(resumes.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "version": "2.0.0"}
+```
+
+---
+
+#### `docker-compose.yml`
+
+```yaml
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai_recruitment_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ai_recruitment
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_recruitment_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/ai_recruitment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+
+volumes:
+  postgres_data:
+  uploads_data:
+```
+
+---
+
+#### `backend/Dockerfile`
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system deps for psycopg2 and python-docx
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+```
+
+---
+
+#### `.gitignore`
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+env/
+
+# Uploads
+backend/uploads/
+
+# IDE
+.vscode/
+.idea/
+
+# Database
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+---
+
+## 全部文件清单 ✅
+
+```
+F:\agent项目\AI简历招聘\
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth.py          ← 注册/登录
+│   │   │   ├── users.py         ← 用户信息
+│   │   │   ├── jobs.py          ← 职位 CRUD
+│   │   │   ├── resumes.py       ← 简历上传/解析
+│   │   │   └── applications.py  ← 投递+触发AI打分
+│   │   ├── core/
+│   │   │   ├── config.py        ← 配置读取
+│   │   │   ├── database.py      ← 异步 PostgreSQL
+│   │   │   └── security.py      ← JWT + bcrypt
+│   │   ├── models/
+│   │   │   ├── user.py
+│   │   │   ├── job.py
+│   │   │   ├── resume.py
+│   │   │   └── application.py   ← 含 ai_score 字段
+│   │   ├── schemas/             ← Pydantic 验证
+│   │   ├── services/
+│   │   │   └── ai_service.py    ← 大模型打分核心
+│   │   ├── utils/
+│   │   │   └── file_parser.py   ← PDF/DOCX 解析
+│   │   └── main.py              ← FastAPI 入口
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .env.example
+├── docker-compose.yml
+└── .gitignore
+```
+
+---
+
+## 下一步操作指引 🚀
+
+把上面所有文件创建好之后，启动方式：
+
+```bash
+# 1. 进入后端目录，复制环境变量
+cd "F:\agent项目\AI简历招聘\backend"
+copy .env.example .env
+# 编辑 .env 填入你的 OPENAI_API_KEY
+
+# 2. 启动 PostgreSQL（用 Docker）
+cd "F:\agent项目\AI简历招聘"
+docker-compose up postgres -d
+
+# 3. 安装依赖并启动后端
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# 4. 访问 API 文档
+# http://localhost:8000/docs
+```
+
+Phase 1 后端骨架完整输出完毕 🎉 告诉我你跑起来的情况，或者直接说开始 **Phase 2 前端**！
+宝宝说得完全对！我之前写的是招聘平台的逻辑，任务书要的是**企业内部AI招聘系统**，角色和流程完全不一样 🎯
+
+让我重新对齐任务书，从头输出正确的代码。
+
+---
+
+## 重新对齐：核心数据模型
+
+### 角色体系（4个）
+
+* `admin` — 系统管理员
+* `hr` — HR，管理全流程
+* `dept_leader` — 部门负责人，审核岗位/候选人
+* `analyst` — 数据分析师，只读报表
+
+### 候选人状态机（9节点）
+
+```
+submitted → ai_scoring → scoring_failed
+                       ↓
+                   ai_scored → hr_review → dept_review → interview → offered → hired
+                                                                    ↓
+                                                                 rejected
+```
+
+### AI打分5维度
+
+```json
+{
+  "education_match": 0-20,
+  "experience_match": 0-25,
+  "skill_match": 0-30,
+  "stability": 0-15,
+  "overall_impression": 0-10,
+  "total": 0-100,
+  "summary": "...",
+  "strengths": [...],
+  "weaknesses": [...]
+}
+```
+
+---
+
+## 全量正确代码
+
+---
+
+### `backend/app/models/user.py`
+
+```python
+from datetime import datetime, timezone
+from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column
+import enum
+from app.core.database import Base
+
+
+class UserRole(str, enum.Enum):
+    admin = "admin"               # 系统管理员
+    hr = "hr"                     # HR，管理全流程
+    dept_leader = "dept_leader"   # 部门负责人
+    analyst = "analyst"           # 数据分析师（只读）
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.hr)
+    department: Mapped[str | None] = mapped_column(String(100))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+```
+
+---
+
+### `backend/app/models/job.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+from app.core.database import Base
+
+
+class JobStatus(str, enum.Enum):
+    draft = "draft"       # 草稿
+    active = "active"     # 招聘中
+    paused = "paused"     # 暂停
+    closed = "closed"     # 已关闭
+
+
+class EducationLevel(str, enum.Enum):
+    any = "any"
+    junior_college = "junior_college"   # 大专
+    bachelor = "bachelor"               # 本科
+    master = "master"                   # 硕士
+    phd = "phd"                         # 博士
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    # 创建人（HR）
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # 归属部门负责人
+    dept_leader_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    requirements: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # 结构化要求字段（供 AI 打分用）
+    required_education: Mapped[EducationLevel] = mapped_column(
+        SAEnum(EducationLevel), default=EducationLevel.bachelor
+    )
+    required_experience_years: Mapped[int] = mapped_column(Integer, default=0)
+    required_skills: Mapped[Optional[str]] = mapped_column(Text)  # JSON 数组字符串
+    headcount: Mapped[int] = mapped_column(Integer, default=1)    # 招聘人数
+
+    location: Mapped[Optional[str]] = mapped_column(String(100))
+    salary_min: Mapped[Optional[int]] = mapped_column(Integer)
+    salary_max: Mapped[Optional[int]] = mapped_column(Integer)
+    status: Mapped[JobStatus] = mapped_column(SAEnum(JobStatus), default=JobStatus.active)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    creator: Mapped["User"] = relationship("User", foreign_keys=[created_by])
+    dept_leader: Mapped[Optional["User"]] = relationship("User", foreign_keys=[dept_leader_id])
+```
+
+---
+
+### `backend/app/models/resume.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.core.database import Base
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    # 候选人不是系统用户，用 candidate 表关联
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False)
+
+    file_path: Mapped[Optional[str]] = mapped_column(String(500))
+    file_name: Mapped[Optional[str]] = mapped_column(String(200))
+    file_type: Mapped[Optional[str]] = mapped_column(String(20))   # pdf / docx / jpg
+
+    # AI 解析出的结构化内容
+    parsed_content: Mapped[Optional[str]] = mapped_column(Text)    # 原始文本
+    parsed_education: Mapped[Optional[str]] = mapped_column(String(100))
+    parsed_experience_years: Mapped[Optional[int]] = mapped_column(Integer)
+    parsed_skills: Mapped[Optional[str]] = mapped_column(Text)     # JSON 数组
+    parsed_work_history: Mapped[Optional[str]] = mapped_column(Text)  # JSON
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="resumes")
+```
+
+---
+
+### `backend/app/models/candidate.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.core.database import Base
+
+
+class Candidate(Base):
+    """
+    候选人 — 不是系统登录用户，是被投递/导入的外部求职者
+    """
+    __tablename__ = "candidates"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(30))
+    source: Mapped[Optional[str]] = mapped_column(String(100))  # 来源渠道：BOSS/猎头/内推
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="candidate")
+    applications: Mapped[list["Application"]] = relationship(
+        "Application", back_populates="candidate"
+    )
+```
+
+---
+
+### `backend/app/models/application.py`
+
+```python
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Float, Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+from app.core.database import Base
+
+
+class ApplicationStatus(str, enum.Enum):
+    # 严格 9 节点状态机，对齐任务书
+    submitted = "submitted"           # 1. 已投递
+    ai_scoring = "ai_scoring"         # 2. AI 打分中
+    scoring_failed = "scoring_failed" # 3. 打分失败（异常分支）
+    ai_scored = "ai_scored"           # 4. AI 打分完成
+    hr_review = "hr_review"           # 5. HR 审核中
+    dept_review = "dept_review"       # 6. 部门负责人审核
+    interview = "interview"           # 7. 面试中
+    offered = "offered"               # 8. 已发 Offer
+    hired = "hired"                   # 9. 已入职
+    rejected = "rejected"             # 淘汰（任意节点可触发）
+
+
+# 合法的状态流转规则（防止跨级跳转）
+VALID_TRANSITIONS: dict[ApplicationStatus, list[ApplicationStatus]] = {
+    ApplicationStatus.submitted:      [ApplicationStatus.ai_scoring],
+    ApplicationStatus.ai_scoring:     [ApplicationStatus.ai_scored, ApplicationStatus.scoring_failed],
+    ApplicationStatus.scoring_failed: [ApplicationStatus.ai_scoring],  # 允许重试
+    ApplicationStatus.ai_scored:      [ApplicationStatus.hr_review, ApplicationStatus.rejected],
+    ApplicationStatus.hr_review:      [ApplicationStatus.dept_review, ApplicationStatus.rejected],
+    ApplicationStatus.dept_review:    [ApplicationStatus.interview, ApplicationStatus.rejected],
+    ApplicationStatus.interview:      [ApplicationStatus.offered, ApplicationStatus.rejected],
+    ApplicationStatus.offered:        [ApplicationStatus.hired, ApplicationStatus.rejected],
+    ApplicationStatus.hired:          [],  # 终态
+    ApplicationStatus.rejected:       [],  # 终态
+}
+
+
+class Application(Base):
+    __tablename__ = "applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), nullable=False)
+    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"), nullable=False)
+
+    status: Mapped[ApplicationStatus] = mapped_column(
+        SAEnum(ApplicationStatus), default=ApplicationStatus.submitted
+    )
+
+    # ── AI 打分 5 维度（对齐任务书 D 模块）──────────────────────────
+    score_education: Mapped[Optional[float]] = mapped_column(Float)    # 学历匹配  0-20
+    score_experience: Mapped[Optional[float]] = mapped_column(Float)   # 经验匹配  0-25
+    score_skill: Mapped[Optional[float]] = mapped_column(Float)        # 技能匹配  0-30
+    score_stability: Mapped[Optional[float]] = mapped_column(Float)    # 稳定性    0-15
+    score_impression: Mapped[Optional[float]] = mapped_column(Float)   # 整体印象  0-10
+    ai_total_score: Mapped[Optional[float]] = mapped_column(Float)     # 综合分    0-100
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text)            # AI 总结
+    ai_strengths: Mapped[Optional[str]] = mapped_column(Text)          # JSON 数组
+    ai_weaknesses: Mapped[Optional[str]] = mapped_column(Text)         # JSON 数组
+    scoring_error: Mapped[Optional[str]] = mapped_column(Text)         # 打分失败原因
+
+    # ── 人工操作记录 ────────────────────────────────────────────────
+    hr_notes: Mapped[Optional[str]] = mapped_column(Text)
+    dept_notes: Mapped[Optional[str]] = mapped_column(Text)
+    interview_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cover_letter: Mapped[Optional[str]] = mapped_column(Text)
+
+    # ── 操作人追踪 ──────────────────────────────────────────────────
+    reviewed_by_hr: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    reviewed_by_dept: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    job: Mapped["Job"] = relationship("Job", foreign_keys=[job_id])
+    candidate: Mapped["Candidate"] = relationship("Candidate", back_populates="applications")
+    resume: Mapped["Resume"] = relationship("Resume", foreign_keys=[resume_id])
+    hr_reviewer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewed_by_hr])
+    dept_reviewer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewed_by_dept])
+```
+
+---
+
+### `backend/app/services/ai_service.py`
+
+```python
+import json
+import logging
+from typing import Optional
+from openai import AsyncOpenAI
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class AIScoreResult:
+    """5维度打分结果，对齐任务书 D 模块"""
+    def __init__(self, data: dict):
+        self.education_match: float = float(data.get("education_match", 0))   # 0-20
+        self.experience_match: float = float(data.get("experience_match", 0)) # 0-25
+        self.skill_match: float = float(data.get("skill_match", 0))           # 0-30
+        self.stability: float = float(data.get("stability", 0))               # 0-15
+        self.overall_impression: float = float(data.get("overall_impression", 0))  # 0-10
+        self.total: float = (
+            self.education_match + self.experience_match +
+            self.skill_match + self.stability + self.overall_impression
+        )
+        self.summary: str = data.get("summary", "")
+        self.strengths: list[str] = data.get("strengths", [])
+        self.weaknesses: list[str] = data.get("weaknesses", [])
+
+
+class AIService:
+    def __init__(self):
+        self.client = AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_BASE_URL,
+        )
+
+    async def score_resume(
+        self,
+        resume_text: str,
+        job_title: str,
+        job_requirements: str,
+        required_education: str,
+        required_experience_years: int,
+        required_skills: list[str],
+    ) -> AIScoreResult:
+        """
+        调用大模型对简历进行 5 维度打分。
+        严格要求返回 JSON，不接受自由文本。
+        """
+        prompt = f"""
+你是一位专业的企业 HR 和招聘专家。请根据以下岗位要求，对候选人简历进行结构化评分。
+
+## 岗位信息
+- 职位：{job_title}
+- 学历要求：{required_education}
+- 工作年限要求：{required_experience_years} 年
+- 技能要求：{', '.join(required_skills)}
+- 岗位职责与要求：
+{job_requirements}
+
+## 候选人简历
+{resume_text}
+
+## 评分规则（总分 100 分）
+请严格按照以下 5 个维度打分，每个维度分数不得超过上限：
+
+| 维度 | 字段名 | 满分 | 评分标准 |
+|------|--------|------|----------|
+| 学历匹配 | education_match | 20 | 完全符合20，差一级扣8分 |
+| 经验匹配 | experience_match | 25 | 年限+行业背景综合评估 |
+| 技能匹配 | skill_match | 30 | 按技能覆盖率比例给分 |
+| 稳定性 | stability | 15 | 平均在职时长，跳槽频繁扣分 |
+| 整体印象 | overall_impression | 10 | 简历质量、表达清晰度 |
+
+## 输出格式
+只输出以下 JSON，不要有任何额外文字：
+{{
+  "education_match": <0-20的数字>,
+  "experience_match": <0-25的数字>,
+  "skill_match": <0-30的数字>,
+  "stability": <0-15的数字>,
+  "overall_impression": <0-10的数字>,
+  "summary": "<100字以内的中文总结>",
+  "strengths": ["优势1", "优势2", "优势3"],
+  "weaknesses": ["不足1", "不足2"]
+}}
+"""
+        response = await self.client.chat.completions.create(
+            model=settings.AI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,          # 低温度保证输出稳定
+            response_format={"type": "json_object"},
+        )
+
+        raw = response.choices[0].message.content
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.error(f"AI 返回非法 JSON: {raw}")
+            raise ValueError(f"AI 返回格式错误: {e}")
+
+        return AIScoreResult(data)
+
+    async def parse_resume_text(self, file_path: str) -> str:
+        """
+        从文件中提取纯文本（PDF/DOCX），供 AI 打分使用。
+        具体解析逻辑在 utils/file_parser.py 中实现。
+        """
+        from app.utils.file_parser import extract_text
+        return await extract_text(file_path)
+
+
+ai_service = AIService()
+```
+
+---
+
+### `backend/app/utils/file_parser.py`
+
+```python
+import asyncio
+import os
+from pathlib import Path
+
+
+async def extract_text(file_path: str) -> str:
+    """
+    异步提取文件文本内容，支持 PDF / DOCX / TXT。
+    使用 asyncio.to_thread 避免阻塞事件循环。
+    """
+    return await asyncio.to_thread(_extract_sync, file_path)
+
+
+def _extract_sync(file_path: str) -> str:
+    suffix = Path(file_path).suffix.lower()
+
+    if suffix == ".pdf":
+        return _extract_pdf(file_path)
+    elif suffix == ".docx":
+        return _extract_docx(file_path)
+    elif suffix == ".txt":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    else:
+        raise ValueError(f"不支持的文件类型: {suffix}")
+
+
+def _extract_pdf(file_path: str) -> str:
+    import PyPDF2
+    text_parts = []
+    with open(file_path, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+    return "\n".join(text_parts)
+
+
+def _extract_docx(file_path: str) -> str:
+    from docx import Document
+    doc = Document(file_path)
+    return "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+```
+
+---
+
+### `backend/app/api/routes/resumes.py`
+
+```python
+import os
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.core.config import settings
+from app.models.resume import Resume
+from app.models.candidate import Candidate
+from app.models.user import User, UserRole
+from app.schemas.resume import ResumeOut
+
+router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+ALLOWED_TYPES = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "text/plain": ".txt",
+}
+
+
+@router.post("/upload", response_model=ResumeOut, status_code=status.HTTP_201_CREATED)
+async def upload_resume(
+    candidate_id: int = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # 只有 HR 和 admin 可以上传简历
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can upload resumes")
+
+    # 校验文件类型
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Supported: PDF, DOCX, TXT"
+        )
+
+    # 校验文件大小
+    content = await file.read()
+    if len(content) > settings.MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    # 确认候选人存在
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # 保存文件到磁盘
+    ext = ALLOWED_TYPES[file.content_type]
+    saved_filename = f"{uuid.uuid4().hex}{ext}"
+    save_dir = os.path.join(settings.UPLOAD_DIR, "resumes")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, saved_filename)
+
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    # 写数据库记录
+    resume = Resume(
+        candidate_id=candidate_id,
+        file_path=save_path,
+        file_name=file.filename,
+        file_type=ext.lstrip("."),
+    )
+    db.add(resume)
+    await db.flush()
+    await db.refresh(resume)
+    return resume
+
+
+@router.get("/candidate/{candidate_id}", response_model=List[ResumeOut])
+async def list_candidate_resumes(
+    candidate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.candidate_id == candidate_id)
+    )
+    return result.scalars().all()
+```
+
+---
+
+### `backend/app/api/routes/applications.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.application import Application, ApplicationStatus, VALID_TRANSITIONS
+from app.models.job import Job
+from app.models.resume import Resume
+from app.models.user import User, UserRole
+from app.schemas.application import ApplicationCreate, ApplicationStatusUpdate, ApplicationOut
+from app.services.ai_service import ai_service
+import json
+import asyncio
+
+router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+@router.post("/", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
+async def create_application(
+    app_in: ApplicationCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can submit applications")
+
+    # 验证 job 和 resume 存在
+    job_res = await db.execute(select(Job).where(Job.id == app_in.job_id))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    resume_res = await db.execute(select(Resume).where(Resume.id == app_in.resume_id))
+    resume = resume_res.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    application = Application(
+        job_id=app_in.job_id,
+        candidate_id=resume.candidate_id,
+        resume_id=app_in.resume_id,
+        cover_letter=app_in.cover_letter,
+        status=ApplicationStatus.submitted,
+    )
+    db.add(application)
+    await db.flush()
+    await db.refresh(application)
+
+    # 异步触发 AI 打分（不阻塞响应）
+    asyncio.create_task(_trigger_ai_scoring(application.id))
+
+    return application
+
+
+async def _trigger_ai_scoring(application_id: int):
+    """后台任务：触发 AI 打分流程"""
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        try:
+            # 拉取完整关联数据
+            result = await db.execute(
+                select(Application).where(Application.id == application_id)
+            )
+            application = result.scalar_one_or_none()
+            if not application:
+                return
+
+            # 更新状态为打分中
+            application.status = ApplicationStatus.ai_scoring
+            await db.flush()
+
+            # 获取简历文本
+            resume_result = await db.execute(
+                select(Resume).where(Resume.id == application.resume_id)
+            )
+            resume = resume_result.scalar_one()
+
+            job_result = await db.execute(
+                select(Job).where(Job.id == application.job_id)
+            )
+            job = job_result.scalar_one()
+
+            resume_text = resume.parsed_content or ""
+            if not resume_text and resume.file_path:
+                resume_text = await ai_service.parse_resume_text(resume.file_path)
+                resume.parsed_content = resume_text
+
+            required_skills = json.loads(job.required_skills or "[]")
+
+            # 调用 AI 打分
+            score = await ai_service.score_resume(
+                resume_text=resume_text,
+                job_title=job.title,
+                job_requirements=job.requirements,
+                required_education=job.required_education.value,
+                required_experience_years=job.required_experience_years,
+                required_skills=required_skills,
+            )
+
+            # 写入 5 维度分数
+            application.score_education = score.education_match
+            application.score_experience = score.experience_match
+            application.score_skill = score.skill_match
+            application.score_stability = score.stability
+            application.score_impression = score.overall_impression
+            application.ai_total_score = score.total
+            application.ai_summary = score.summary
+            application.ai_strengths = json.dumps(score.strengths, ensure_ascii=False)
+            application.ai_weaknesses = json.dumps(score.weaknesses, ensure_ascii=False)
+            application.status = ApplicationStatus.ai_scored
+
+            await db.commit()
+
+        except Exception as e:
+            # 打分失败：写入错误原因并更新状态
+            try:
+                application.status = ApplicationStatus.scoring_failed
+                application.scoring_error = str(e)
+                await db.commit()
+            except Exception:
+                pass
+
+
+@router.put("/{app_id}/status", response_model=ApplicationOut)
+async def update_status(
+    app_id: int,
+    update: ApplicationStatusUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # 验证状
+```
+继续从 `update_status` 的状态验证部分往下写 👇
+
+---
+
+### `backend/app/api/routes/applications.py` （续完）
+
+```python
+    # 验证状态流转合法性
+    allowed_next = VALID_TRANSITIONS.get(application.status, [])
+    if update.new_status not in allowed_next:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid transition: {application.status} → {update.new_status}. "
+                   f"Allowed: {[s.value for s in allowed_next]}"
+        )
+
+    # 权限校验：不同节点只有对应角色可以推进
+    role = current_user.role
+    new_status = update.new_status
+
+    if new_status == ApplicationStatus.hr_review and role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can move to hr_review")
+    if new_status == ApplicationStatus.dept_review and role not in [UserRole.dept_leader, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only dept_leader can move to dept_review")
+    if new_status == ApplicationStatus.interview and role not in [UserRole.hr, UserRole.dept_leader, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="No permission to schedule interview")
+    if new_status in [ApplicationStatus.offered, ApplicationStatus.hired] and role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can issue offer/hired")
+
+    # 记录操作人
+    if new_status == ApplicationStatus.hr_review:
+        application.reviewed_by_hr = current_user.id
+        if update.notes:
+            application.hr_notes = update.notes
+    elif new_status == ApplicationStatus.dept_review:
+        application.reviewed_by_dept = current_user.id
+        if update.notes:
+            application.dept_notes = update.notes
+    elif new_status == ApplicationStatus.interview and update.interview_date:
+        application.interview_date = update.interview_date
+
+    application.status = new_status
+    await db.flush()
+    await db.refresh(application)
+    return application
+
+
+@router.get("/", response_model=List[ApplicationOut])
+async def list_applications(
+    job_id: int | None = None,
+    status: ApplicationStatus | None = None,
+    min_score: float | None = None,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # analyst 和其他角色都可以查看
+    query = select(Application)
+    if job_id:
+        query = query.where(Application.job_id == job_id)
+    if status:
+        query = query.where(Application.status == status)
+    if min_score is not None:
+        query = query.where(Application.ai_total_score >= min_score)
+    query = query.order_by(Application.ai_total_score.desc().nulls_last())
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{app_id}", response_model=ApplicationOut)
+async def get_application(
+    app_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return application
+
+
+@router.post("/{app_id}/retry-scoring", response_model=ApplicationOut)
+async def retry_scoring(
+    app_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """对打分失败的申请重新触发 AI 打分"""
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can retry scoring")
+
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if application.status != ApplicationStatus.scoring_failed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only retry scoring_failed applications, current: {application.status}"
+        )
+
+    # 重置状态，后台重新打分
+    application.status = ApplicationStatus.submitted
+    application.scoring_error = None
+    await db.flush()
+    await db.refresh(application)
+
+    import asyncio
+    asyncio.create_task(_trigger_ai_scoring(application.id))
+    return application
+```
+
+---
+
+### `backend/app/schemas/application.py`（完整重写）
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.models.application import ApplicationStatus
+
+
+class ApplicationCreate(BaseModel):
+    job_id: int
+    resume_id: int
+    cover_letter: Optional[str] = None
+
+
+class ApplicationStatusUpdate(BaseModel):
+    new_status: ApplicationStatus
+    notes: Optional[str] = None
+    interview_date: Optional[datetime] = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_id: int
+    candidate_id: int
+    resume_id: int
+    status: ApplicationStatus
+
+    # AI 5 维度分数
+    score_education: Optional[float] = None
+    score_experience: Optional[float] = None
+    score_skill: Optional[float] = None
+    score_stability: Optional[float] = None
+    score_impression: Optional[float] = None
+    ai_total_score: Optional[float] = None
+    ai_summary: Optional[str] = None
+    ai_strengths: Optional[str] = None
+    ai_weaknesses: Optional[str] = None
+    scoring_error: Optional[str] = None
+
+    # 人工记录
+    hr_notes: Optional[str] = None
+    dept_notes: Optional[str] = None
+    interview_date: Optional[datetime] = None
+    cover_letter: Optional[str] = None
+
+    applied_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+### `backend/app/schemas/resume.py`（完整重写）
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+class ResumeOut(BaseModel):
+    id: int
+    candidate_id: int
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    parsed_education: Optional[str] = None
+    parsed_experience_years: Optional[int] = None
+    parsed_skills: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+### `backend/app/schemas/candidate.py`（新增）
+
+```python
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
+
+
+class CandidateCreate(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CandidateUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CandidateOut(BaseModel):
+    id: int
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+### `backend/app/api/routes/candidates.py`（新增）
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List, Optional
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.candidate import Candidate
+from app.models.user import User, UserRole
+from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateOut
+
+router = APIRouter(prefix="/candidates", tags=["candidates"])
+
+
+@router.post("/", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
+async def create_candidate(
+    candidate_in: CandidateCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can create candidates")
+
+    candidate = Candidate(**candidate_in.model_dump())
+    db.add(candidate)
+    await db.flush()
+    await db.refresh(candidate)
+    return candidate
+
+
+@router.get("/", response_model=List[CandidateOut])
+async def list_candidates(
+    keyword: Optional[str] = None,
+    skip: int = 0,
+    limit: int = Query(default=20, le=100),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Candidate)
+    if keyword:
+        query = query.where(
+            Candidate.name.ilike(f"%{keyword}%") |
+            Candidate.email.ilike(f"%{keyword}%")
+        )
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{candidate_id}", response_model=CandidateOut)
+async def get_candidate(
+    candidate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return candidate
+
+
+@router.put("/{candidate_id}", response_model=CandidateOut)
+async def update_candidate(
+    candidate_id: int,
+    candidate_in: CandidateUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can update candidates")
+
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    for field, value in candidate_in.model_dump(exclude_unset=True).items():
+        setattr(candidate, field, value)
+    await db.flush()
+    await db.refresh(candidate)
+    return candidate
+```
+
+---
+
+### `backend/app/api/routes/auth.py`
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.core.database import get_db
+from app.core.security import verify_password, get_password_hash, create_access_token
+from app.models.user import User
+from app.schemas.user import UserCreate, UserOut, Token
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == user_in.email))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=user_in.email,
+        hashed_password=get_password_hash(user_in.password),
+        full_name=user_in.full_name,
+        role=user_in.role,
+        department=user_in.department,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.email == form_data.username))
+    user = result.scalar_one_or_none()
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+
+    access_token = create_access_token(subject=user.id)
+    return {"access_token": access_token, "token_type": "bearer"}
+```
+
+---
+
+### `backend/app/schemas/user.py`（更新，加 department）
+
+```python
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
+from app.models.user import UserRole
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: UserRole = UserRole.hr
+    department: Optional[str] = None
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    department: Optional[str] = None
+
+
+class UserOut(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+```
+
+---
+
+### `backend/app/main.py`（完整版）
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+
+from app.core.config import settings
+from app.core.database import init_db
+from app.api.routes import auth, users, jobs, resumes, applications, candidates
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时建表、建上传目录
+    await init_db()
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "resumes"), exist_ok=True)
+    yield
+    # 关闭时可做清理（暂无）
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version="2.0.0",
+    description="企业内部 AI 智能招聘系统",
+    lifespan=lifespan,
+)
+
+# CORS（开发阶段放开，生产收紧）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.DEBUG else ["https://your-domain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 静态文件（上传的简历供下载）
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+# 注册路由
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
+app.include_router(resumes.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
+app.include_router(candidates.router, prefix="/api")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "version": "2.0.0"}
+```
+
+---
+
+### `backend/.env.example`
+
+```env
+# Database (PostgreSQL)
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_recruitment
+
+# JWT
+SECRET_KEY=your-super-secret-key-change-this-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# AI (支持 OpenAI / 国内兼容接口，如 DeepSeek / 智谱)
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
+
+# File Upload
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=10485760
+
+# App
+APP_NAME=AI Recruitment System
+DEBUG=True
+```
+
+---
+
+### `docker-compose.yml`
+
+```yaml
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ai_recruitment
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+
+volumes:
+  pgdata:
+  uploads:
+```
+
+---
+
+### `backend/Dockerfile`
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+```
+
+---
+
+### `.gitignore`
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Uploads
+uploads/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+```
+
+---
+
+## 完整文件清单确认 ✅
+
+```
+backend/
+├── app/
+│   ├── api/routes/
+│   │   ├── auth.py          ✅
+│   │   ├── users.py         ✅
+│   │   ├── jobs.py          ✅
+│   │   ├── resumes.py       ✅
+│   │   ├── applications.py  ✅ (含状态机验证 + 重试打分)
+│   │   └── candidates.py    ✅ (新增)
+│   ├── core/
+│   │   ├── config.py        ✅
+│   │   ├── database.py      ✅
+│   │   └── security.py      ✅
+│   ├── models/
+│   │   ├── user.py          ✅ (4角色)
+│   │   ├── job.py           ✅ (加部门/学历/年限/技能)
+│   │   ├── resume.py        ✅
+│   │   ├── candidate.py     ✅ (新增)
+│   │   └── application.py   ✅ (9节点状态机 + 5维度分数)
+│   ├── schemas/             ✅ 全部对齐
+│   ├── services/
+│   │   └── ai_service.py    ✅ (5维度结构化输出)
+│   ├── utils/
+│   │   └── file_parser.py   ✅
+│   └── main.py              ✅
+├── requirements.txt         ✅
+├── .env.example             ✅
+└── Dockerfile               ✅
+docker-compose.yml           ✅
+```
+
+全部代码输出完毕，交给本地 agent 执行吧 🚀 下一步是 Phase 2 前端还是先跑通后端测试？
+好！Phase 2 = **把后端跑通** 🚀
+
+按顺序来，一个文件一个文件输出，不截断。
+
+---
+
+## 第一个：`backend/app/schemas/application.py`（补全）
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.models.application import ApplicationStatus
+
+
+class ApplicationCreate(BaseModel):
+    job_id: int
+    resume_id: int
+    cover_letter: Optional[str] = None
+
+
+class ApplicationStatusUpdate(BaseModel):
+    new_status: ApplicationStatus
+    notes: Optional[str] = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_id: int
+    candidate_id: int
+    resume_id: int
+    status: ApplicationStatus
+
+    # AI 5维度分数
+    score_education: Optional[float] = None
+    score_experience: Optional[float] = None
+    score_skill: Optional[float] = None
+    score_stability: Optional[float] = None
+    score_impression: Optional[float] = None
+    ai_total_score: Optional[float] = None
+    ai_summary: Optional[str] = None
+    ai_strengths: Optional[str] = None
+    ai_weaknesses: Optional[str] = None
+    scoring_error: Optional[str] = None
+
+    # 人工记录
+    hr_notes: Optional[str] = None
+    dept_notes: Optional[str] = None
+    cover_letter: Optional[str] = None
+    interview_date: Optional[datetime] = None
+
+    applied_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+## 第二个：`backend/app/schemas/candidate.py`（新增）
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+class CandidateCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CandidateUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CandidateOut(BaseModel):
+    id: int
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+## 第三个：`backend/app/schemas/resume.py`（补全）
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+class ResumeOut(BaseModel):
+    id: int
+    candidate_id: int
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    parsed_education: Optional[str] = None
+    parsed_experience_years: Optional[int] = None
+    parsed_skills: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+## 第四个：`backend/app/api/routes/applications.py`（完整版）
+
+```python
+import json
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List, Optional
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.application import Application, ApplicationStatus, VALID_TRANSITIONS
+from app.models.job import Job
+from app.models.resume import Resume
+from app.models.user import User, UserRole
+from app.schemas.application import ApplicationCreate, ApplicationStatusUpdate, ApplicationOut
+from app.services.ai_service import ai_service
+
+router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+@router.post("/", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
+async def create_application(
+    app_in: ApplicationCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can submit applications")
+
+    job_res = await db.execute(select(Job).where(Job.id == app_in.job_id))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    resume_res = await db.execute(select(Resume).where(Resume.id == app_in.resume_id))
+    resume = resume_res.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    application = Application(
+        job_id=app_in.job_id,
+        candidate_id=resume.candidate_id,
+        resume_id=app_in.resume_id,
+        cover_letter=app_in.cover_letter,
+        status=ApplicationStatus.submitted,
+    )
+    db.add(application)
+    await db.flush()
+    await db.refresh(application)
+
+    # 后台触发 AI 打分，不阻塞响应
+    asyncio.create_task(_trigger_ai_scoring(application.id))
+
+    return application
+
+
+async def _trigger_ai_scoring(application_id: int):
+    """后台任务：AI 打分流程"""
+    from app.core.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(Application).where(Application.id == application_id)
+            )
+            application = result.scalar_one_or_none()
+            if not application:
+                return
+
+            application.status = ApplicationStatus.ai_scoring
+            await db.flush()
+
+            resume_result = await db.execute(
+                select(Resume).where(Resume.id == application.resume_id)
+            )
+            resume = resume_result.scalar_one()
+
+            job_result = await db.execute(
+                select(Job).where(Job.id == application.job_id)
+            )
+            job = job_result.scalar_one()
+
+            resume_text = resume.parsed_content or ""
+            if not resume_text and resume.file_path:
+                resume_text = await ai_service.parse_resume_text(resume.file_path)
+                resume.parsed_content = resume_text
+
+            required_skills = json.loads(job.required_skills or "[]")
+
+            score = await ai_service.score_resume(
+                resume_text=resume_text,
+                job_title=job.title,
+                job_requirements=job.requirements,
+                required_education=job.required_education.value,
+                required_experience_years=job.required_experience_years,
+                required_skills=required_skills,
+            )
+
+            application.score_education = score.education_match
+            application.score_experience = score.experience_match
+            application.score_skill = score.skill_match
+            application.score_stability = score.stability
+            application.score_impression = score.overall_impression
+            application.ai_total_score = score.total
+            application.ai_summary = score.summary
+            application.ai_strengths = json.dumps(score.strengths, ensure_ascii=False)
+            application.ai_weaknesses = json.dumps(score.weaknesses, ensure_ascii=False)
+            application.status = ApplicationStatus.ai_scored
+
+            await db.commit()
+
+        except Exception as e:
+            try:
+                application.status = ApplicationStatus.scoring_failed
+                application.scoring_error = str(e)
+                await db.commit()
+            except Exception:
+                pass
+
+
+@router.put("/{app_id}/status", response_model=ApplicationOut)
+async def update_status(
+    app_id: int,
+    update: ApplicationStatusUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    current_status = application.status
+    new_status = update.new_status
+    allowed = VALID_TRANSITIONS.get(current_status, [])
+
+    if new_status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid transition: {current_status} -> {new_status}. Allowed: {[s.value for s in allowed]}"
+        )
+
+    # 角色权限校验
+    if new_status == ApplicationStatus.dept_review:
+        if current_user.role not in [UserRole.hr, UserRole.admin]:
+            raise HTTPException(status_code=403, detail="Only HR can move to dept_review")
+
+    if new_status in [ApplicationStatus.interview, ApplicationStatus.rejected]:
+        if current_user.role not in [UserRole.dept_leader, UserRole.admin, UserRole.hr]:
+            raise HTTPException(status_code=403, detail="Not authorized for this transition")
+
+    if new_status in [ApplicationStatus.offered, ApplicationStatus.hired]:
+        if current_user.role not in [UserRole.hr, UserRole.admin]:
+            raise HTTPException(status_code=403, detail="Only HR can issue offers")
+
+    # 记录操作人
+    if current_user.role == UserRole.hr:
+        application.reviewed_by_hr = current_user.id
+        if update.notes:
+            application.hr_notes = update.notes
+    elif current_user.role == UserRole.dept_leader:
+        application.reviewed_by_dept = current_user.id
+        if update.notes:
+            application.dept_notes = update.notes
+
+    application.status = new_status
+    await db.flush()
+    await db.refresh(application)
+    return application
+
+
+@router.get("/", response_model=List[ApplicationOut])
+async def list_applications(
+    job_id: Optional[int] = None,
+    status: Optional[ApplicationStatus] = None,
+    skip: int = 0,
+    limit: int = Query(default=20, le=100),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Application)
+    if job_id:
+        query = query.where(Application.job_id == job_id)
+    if status:
+        query = query.where(Application.status == status)
+    # analyst 只读，其他角色正常访问
+    query = query.offset(skip).limit(limit).order_by(Application.applied_at.desc())
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{app_id}", response_model=ApplicationOut)
+async def get_application(
+    app_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return application
+
+
+@router.post("/{app_id}/retry-scoring", response_model=ApplicationOut)
+async def retry_scoring(
+    app_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """对打分失败的申请重新触发 AI 打分"""
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can retry scoring")
+
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if application.status != ApplicationStatus.scoring_failed:
+        raise HTTPException(
+            status_code=400,
+            detail="Only scoring_failed applications can be retried"
+        )
+
+    asyncio.create_task(_trigger_ai_scoring(app_id))
+    return application
+```
+
+---
+
+## 第五个：`backend/app/api/routes/candidates.py`（新增）
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List, Optional
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models.candidate import Candidate
+from app.models.user import User, UserRole
+from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateOut
+
+router = APIRouter(prefix="/candidates", tags=["candidates"])
+
+
+@router.post("/", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
+async def create_candidate(
+    candidate_in: CandidateCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can add candidates")
+
+    candidate = Candidate(**candidate_in.model_dump())
+    db.add(candidate)
+    await db.flush()
+    await db.refresh(candidate)
+    return candidate
+
+
+@router.get("/", response_model=List[CandidateOut])
+async def list_candidates(
+    keyword: Optional[str] = None,
+    skip: int = 0,
+    limit: int = Query(default=20, le=100),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Candidate)
+    if keyword:
+        query = query.where(
+            Candidate.name.ilike(f"%{keyword}%") |
+            Candidate.email.ilike(f"%{keyword}%")
+        )
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/{candidate_id}", response_model=CandidateOut)
+async def get_candidate(
+    candidate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return candidate
+
+
+@router.put("/{candidate_id}", response_model=CandidateOut)
+async def update_candidate(
+    candidate_id: int,
+    candidate_in: CandidateUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role not in [UserRole.hr, UserRole.admin]:
+        raise HTTPException(status_code=403, detail="Only HR can update candidates")
+
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    for field, value in candidate_in.model_dump(exclude_unset=True).items():
+        setattr(candidate, field, value)
+    await db.flush()
+    await db.refresh(candidate)
+    return candidate
+```
+
+---
+
+## 第六个：`backend/app/main.py`（完整入口）
+
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from app.core.config import settings
+from app.core.database import init_db
+from app.api.routes import auth, users, jobs, resumes, applications, candidates
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时自动建表
+    await init_db()
+    yield
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version="2.0.0",
+    description="AI-powered internal recruitment system",
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境改为具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册路由
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
+app.include_router(resumes.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
+app.include_router(candidates.router, prefix="/api")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "version": "2.0.0"}
+```
+
+---
+
+## 第七个：`docker-compose.yml`
+
+```yaml
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai_recruitment_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ai_recruitment
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: ai_recruitment_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/ai_recruitment
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
+  uploads_data:
+```
+
+---
+
+## 第八个：`backend/Dockerfile`
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+---
+
+## 第九个：`backend/.env`（本地开发用，不提交git）
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_recruitment
+SECRET_KEY=dev-secret-key-change-in-production-abc123xyz
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+OPENAI_API_KEY=sk-你的key填这里
+OPENAI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=10485760
+APP_NAME=AI Recruitment System
+DEBUG=True
+```
+
+---
+
+## 第十个：`.gitignore`
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Env
+.env
+.env.local
+
+# Uploads
+backend/uploads/
+
+# DB
+*.db
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+---
+
+全部文件输出完毕 ✅
+
+**现在让本地 agent 执行的顺序：**
+
+1. 创建目录结构
+2. 写入所有文件
+3. `docker-compose up -d db` — 先把 PostgreSQL 跑起来
+4. `cd backend && pip install -r requirements.txt`
+5. `uvicorn app.main:app --reload`
+6. 打开 `http://localhost:8000/docs` 验证 Swagger
+
+React + TypeScript + Vite + Ant Design Pro 🎯
+
+理由：
+
+* **Vite** 比 CRA 快 10 倍，HMR 秒级
+* **TypeScript** 类型安全，后端接口改了前端编译直接报错，不会运行时才发现
+* **Ant Design Pro** 直接内置权限路由、菜单、布局、ProTable、ProForm，企业级开箱即用
+* **Zustand** 状态管理，比 Redux 轻量，比 Context 强
+* **React Query** 接口缓存+自动刷新，AI打分异步轮询完美契合
+
+---
+
+**前端完整目录结构，让本地agent执行：**
+
+```bash
+cd "F:\agent项目\AI简历招聘\frontend"
+
+npm create vite@latest . -- --template react-ts
+
+npm install
+npm install @ant-design/pro-components @ant-design/pro-layout @ant-design/pro-table @ant-design/pro-form
+npm install antd @ant-design/icons
+npm install @tanstack/react-query axios
+npm install zustand
+npm install react-router-dom
+npm install recharts
+npm install dayjs
+npm install -D @types/node
+```
+
+---
+
+然后我输出所有前端文件代码，分批来：
+
+---
+
+## 第一批：项目配置文件
+
+### `frontend/vite.config.ts`
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  server: {
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
+})
+```
+
+---
+
+### `frontend/tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+```
+
+---
+
+### `frontend/tsconfig.node.json`
+
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.ts"]
+}
+```
+
+---
+
+## 第二批：类型定义
+
+### `frontend/src/types/index.ts`
+
+```typescript
+// ── 用户角色 ──────────────────────────────────────────
+export type UserRole = 'admin' | 'hr' | 'dept_leader' | 'analyst'
+
+export interface User {
+  id: number
+  email: string
+  full_name: string
+  role: UserRole
+  department?: string
+  is_active: boolean
+  created_at: string
+}
+
+// ── 岗位 ──────────────────────────────────────────────
+export type JobStatus = 'draft' | 'active' | 'paused' | 'closed'
+export type EducationLevel = 'any' | 'junior_college' | 'bachelor' | 'master' | 'phd'
+
+export interface Job {
+  id: number
+  created_by: number
+  dept_leader_id?: number
+  title: string
+  department: string
+  description: string
+  requirements: string
+  required_education: EducationLevel
+  required_experience_years: number
+  required_skills?: string   // JSON string
+  headcount: number
+  location?: string
+  salary_min?: number
+  salary_max?: number
+  status: JobStatus
+  created_at: string
+  updated_at: string
+}
+
+// ── 候选人 ────────────────────────────────────────────
+export interface Candidate {
+  id: number
+  name: string
+  email?: string
+  phone?: string
+  source?: string
+  notes?: string
+  created_at: string
+}
+
+// ── 简历 ──────────────────────────────────────────────
+export interface Resume {
+  id: number
+  candidate_id: number
+  file_name?: string
+  file_type?: string
+  parsed_education?: string
+  parsed_experience_years?: number
+  parsed_skills?: string
+  created_at: string
+}
+
+// ── 申请状态机 9节点 ──────────────────────────────────
+export type ApplicationStatus =
+  | 'submitted'
+  | 'ai_scoring'
+  | 'scoring_failed'
+  | 'ai_scored'
+  | 'hr_review'
+  | 'dept_review'
+  | 'interview'
+  | 'offered'
+  | 'hired'
+  | 'rejected'
+
+export interface Application {
+  id: number
+  job_id: number
+  candidate_id: number
+  resume_id: number
+  status: ApplicationStatus
+
+  // AI 5维度分数
+  score_education?: number
+  score_experience?: number
+  score_skill?: number
+  score_stability?: number
+  score_impression?: number
+  ai_total_score?: number
+  ai_summary?: string
+  ai_strengths?: string   // JSON string
+  ai_weaknesses?: string  // JSON string
+  scoring_error?: string
+
+  // 人工记录
+  hr_notes?: string
+  dept_notes?: string
+  cover_letter?: string
+  interview_date?: string
+
+  applied_at: string
+  updated_at: string
+}
+
+// ── API 通用响应 ───────────────────────────────────────
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface Token {
+  access_token: string
+  token_type: string
+}
+```
+
+---
+
+## 第三批：API 层
+
+### `frontend/src/services/http.ts`
+
+```typescript
+import axios from 'axios'
+
+const http = axios.create({
+  baseURL: '/api',
+  timeout: 30000,
+})
+
+// 请求拦截：自动带 token
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// 响应拦截：401 跳登录
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export default http
+```
+
+---
+
+### `frontend/src/services/auth.ts`
+
+```typescript
+import http from './http'
+import type { Token, User } from '@/types'
+
+export const authApi = {
+  login: async (email: string, password: string): Promise<Token> => {
+    const form = new URLSearchParams()
+    form.append('username', email)
+    form.append('password', password)
+    const res = await http.post<Token>('/auth/login', form, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return res.data
+  },
+
+  register: async (data: {
+    email: string
+    password: string
+    full_name: string
+    role: string
+  }): Promise<User> => {
+    const res = await http.post<User>('/auth/register', data)
+    return res.data
+  },
+
+  getMe: async (): Promise<User> => {
+    const res = await http.get<User>('/users/me')
+    return res.data
+  },
+}
+```
+
+---
+
+### `frontend/src/services/jobs.ts`
+
+```typescript
+import http from './http'
+import type { Job } from '@/types'
+
+export const jobsApi = {
+  list: async (params?: { keyword?: string; skip?: number; limit?: number }) => {
+    const res = await http.get<Job[]>('/jobs', { params })
+    return res.data
+  },
+
+  get: async (id: number) => {
+    const res = await http.get<Job>(`/jobs/${id}`)
+    return res.data
+  },
+
+  create: async (data: Partial<Job>) => {
+    const res = await http.post<Job>('/jobs', data)
+    return res.data
+  },
+
+  update: async (id: number, data: Partial<Job>) => {
+    const res = await http.put<Job>(`/jobs/${id}`, data)
+    return res.data
+  },
+
+  delete: async (id: number) => {
+    await http.delete(`/jobs/${id}`)
+  },
+}
+```
+
+---
+
+### `frontend/src/services/candidates.ts`
+
+```typescript
+import http from './http'
+import type { Candidate } from '@/types'
+
+export const candidatesApi = {
+  list: async (params?: { keyword?: string; skip?: number; limit?: number }) => {
+    const res = await http.get<Candidate[]>('/candidates', { params })
+    return res.data
+  },
+
+  get: async (id: number) => {
+    const res = await http.get<Candidate>(`/candidates/${id}`)
+    return res.data
+  },
+
+  create: async (data: Partial<Candidate>) => {
+    const res = await http.post<Candidate>('/candidates', data)
+    return res.data
+  },
+
+  update: async (id: number, data: Partial<Candidate>) => {
+    const res = await http.put<Candidate>(`/candidates/${id}`, data)
+    return res.data
+  },
+
+  uploadResume: async (candidateId: number, file: File) => {
+    const form = new FormData()
+    form.append('candidate_id', String(candidateId))
+    form.append('file', file)
+    const res = await http.post('/resumes/upload', form)
+    return res.data
+  },
+}
+```
+
+---
+
+### `frontend/src/services/applications.ts`
+
+```typescript
+import http from './http'
+import type { Application, ApplicationStatus } from '@/types'
+
+export const applicationsApi = {
+  list: async (params?: {
+    job_id?: number
+    status?: ApplicationStatus
+    skip?: number
+    limit?: number
+  }) => {
+    const res = await http.get<Application[]>('/applications', { params })
+    return res.data
+  },
+
+  get: async (id: number) => {
+    const res = await http.get<Application>(`/applications/${id}`)
+    return res.data
+  },
+
+  create: async (data: { job_id: number; resume_id: number; cover_letter?: string }) => {
+    const res = await http.post<Application>('/applications', data)
+    return res.data
+  },
+
+  updateStatus: async (id: number, new_status: ApplicationStatus, notes?: string) => {
+    const res = await http.put<Application>(`/applications/${id}/status`, {
+      new_status,
+      notes,
+    })
+    return res.data
+  },
+
+  retryScoring: async (id: number) => {
+    const res = await http.post<Application>(`/applications/${id}/retry-scoring`)
+    return res.data
+  },
+}
+```
+
+---
+
+## 第四批：状态管理
+
+### `frontend/src/store/authStore.ts`
+
+```typescript
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import type { User } from '@/types'
+
+interface AuthState {
+  user: User | null
+  token: string | null
+  setAuth: (user: User, token: string) => void
+  clearAuth: () => void
+  isAuthenticated: () => boolean
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      token: null,
+
+      setAuth: (user, token) => {
+        localStorage.setItem('access_token', token)
+        set({ user, token })
+      },
+
+      clearAuth: () => {
+        localStorage.removeItem('access_token')
+        set({ user: null, token: null })
+      },
+
+      isAuthenticated: () => !!get().token,
+    }),
+    {
+      name: 'auth-storage',
+      partialize: (state) => ({ user: state.user, token: state.token }),
+    }
+  )
+)
+```
+
+---
+
+## 第五批：路由和布局
+
+### `frontend/src/router/index.tsx`
+
+```typescript
+import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/authStore'
+import MainLayout from '@/layouts/MainLayout'
+import LoginPage from '@/pages/Login'
+import DashboardPage from '@/pages/Dashboard'
+import JobsPage from '@/pages/Jobs'
+import JobDetailPage from '@/pages/JobDetail'
+import CandidatesPage from '@/pages/Candidates'
+import ApplicationsPage from '@/pages/Applications'
+import ApplicationDetailPage from '@/pages/ApplicationDetail'
+import UsersPage from '@/pages/Users'
+
+// 路由守卫
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated())
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />,
+  },
+  {
+    path: '/',
+    element: (
+      <RequireAuth>
+        <MainLayout />
+      </RequireAuth>
+    ),
+    children: [
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'jobs', element: <JobsPage /> },
+      { path: 'jobs/:id', element: <JobDetailPage /> },
+      { path: 'candidates', element: <CandidatesPage /> },
+      { path: 'applications', element: <ApplicationsPage /> },
+      { path: 'applications/:id', element: <ApplicationDetailPage /> },
+      { path: 'users', element: <UsersPage /> },
+    ],
+  },
+])
+```
+
+---
+
+### `frontend/src/layouts/MainLayout.tsx`
+
+```typescript
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Layout, Menu, Avatar, Dropdown, theme } from 'antd'
+import {
+  DashboardOutlined,
+  BriefcaseOutlined,
+  TeamOutlined,
+  FileTextOutlined,
+  UserOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons'
+import { useAuthStore } from '@/store/authStore'
+
+const { Header, Sider, Content } = Layout
+
+const menuItems = [
+  { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
+  { key: '/jobs', icon: <BriefcaseOutlined />, label: '岗位管理' },
+  { key: '/candidates', icon: <TeamOutlined />, label: '候选人' },
+  { key: '/applications', icon: <FileTextOutlined />, label: '申请管理' },
+  { key: '/users', icon: <UserOutlined />, label: '用户管理' },
+]
+
+export default function MainLayout() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { user, clearAuth } = useAuthStore()
+  const { token } = theme.useToken()
+
+  const handleLogout = () => {
+    clearAuth()
+    navigate('/login')
+  }
+
+  const userMenuItems = [
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: handleLogout,
+    },
+  ]
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Sider
+        theme="dark"
+        width={220}
+        style={{ position: 'fixed', height: '100vh', left: 0, top: 0, zIndex: 100 }}
+      >
+        <div style={{
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: 700,
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+        }}>
+          🤖 AI 招聘系统
+        </div>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname]}
+          items={menuItems}
+          onClick={({ key }) => navigate(key)}
+          style={{ marginTop: 8 }}
+        />
+      </Sider>
+
+      <Layout style={{ marginLeft: 220 }}>
+        <Header style={{
+          background: token.colorBgContainer,
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 99,
+        }}>
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Avatar style={{ backgroundColor: token.colorPrimary }}>
+                {user?.full_name?.[0] ?? 'U'}
+              </Avatar>
+              <span>{user?.full_name}</span>
+              <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>
+                [{user?.role}]
+              </span>
+            </div>
+          </Dropdown>
+        </Header>
+
+        <Content style={{ margin: 24, minHeight: 280 }}>
+          <Outlet />
+        </Content>
+      </Layout>
+    </Layout>
+  )
+}
+```
+
+---
+
+## 第六批：页面
+
+### `frontend/src/pages/Login.tsx`
+
+```typescript
+import { Form, Input, Button, Card, message, Select } from 'antd'
+import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { authApi } from '@/services/auth'
+import { useAuthStore } from '@/store/authStore'
+
+export default function LoginPage() {
+  const navigate = useNavigate()
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const [form] = Form.useForm()
+
+  const handleLogin = async (values: { email: string; password: string }) => {
+    try {
+      const token = await authApi.login(values.email, values.password)
+      const user = await authApi.getMe()
+      setAuth(user, token.access_token)
+      message.success('登录成功')
+      navigate('/dashboard')
+    } catch {
+      message.error('邮箱或密码错误')
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    }}>
+      <Card style={{ width: 400, borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ fontSize: 40 }}>🤖</div>
+          <h2 style={{ margin: '8px 0 4px' }}>AI 招聘系统</h2>
+          <p style={{ color: '#888', margin: 0 }}>企业内部招聘管理平台</p>
+        </div>
+        <Form form={form} onFinish={handleLogin} layout="vertical">
+          <Form.Item
+            name="email"
+            rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不对' }]}
+          >
+            <Input prefix={<UserOutlined />} placeholder="邮箱" size="large" />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            rules={[{ required: true, message: '请输入密码' }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="密码" size="large" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block size="large">
+              登录
+            </Button>
+          </Form.Item>
+        </Form>
+      </Card>
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/pages/Dashboard.tsx`
+
+```typescript
+import { useQuery } from '@tanstack/react-query'
+import { Row, Col, Card, Statistic, Table, Tag } from 'antd'
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { applicationsApi } from '@/services/applications'
+import { jobsApi } from '@/services/jobs'
+import { STATUS_CONFIG } from '@/constants/status'
+
+export default function DashboardPage() {
+  const { data: applications = [] } = useQuery({
+    queryKey: ['applications'],
+    queryFn: () => applicationsApi.list({ limit: 100 }),
+  })
+
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => jobsApi.list({ limit: 100 }),
+  })
+
+  // 统计各状态数量
+  const statusCounts = applications.reduce((acc, app) => {
+    acc[app.status] = (acc[app.status] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  // AI 打分分布（已打分的）
+  const scoredApps = applications.filter((a) => a.ai_total_score != null)
+  const avgScores = scoredApps.length > 0 ? {
+    education: scoredApps.reduce((s, a) => s + (a.score_education ?? 0), 0) / scoredApps.length,
+    experience: scoredApps.reduce((s, a) => s + (a.score_experience ?? 0), 0) / scoredApps.length,
+    skill: scoredApps.reduce((s, a) => s + (a.score_skill ?? 0), 0) / scoredApps.length,
+    stability: scoredApps.reduce((s, a) => s + (a.score_stability ?? 0), 0) / scoredApps.length,
+    impression: scoredApps.reduce((s, a) => s + (a.score_impression ?? 0), 0) / scoredApps.length,
+  } : null
+
+  const radarData = avgScores ? [
+    { subject: '学历匹配', value: (avgScores.education / 20) * 100 },
+    { subject: '经验匹配', value: (avgScores.experience / 25) * 100 },
+    { subject: '技能匹配', value: (avgScores.skill / 30) * 100 },
+    { subject: '稳定性', value: (avgScores.stability / 15) * 100 },
+    { subject: '整体印象', value: (avgScores.impression / 10) * 100 },
+  ] : []
+
+  const recentColumns = [
+    { title: 'ID', dataIndex: 'id', width: 60 },
+    { title: '岗位ID', dataIndex: 'job_id' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (s: string) => {
+        const cfg = STATUS_CONFIG[s] ?? { label: s, color: 'default' }
+        return <Tag color={cfg.color}>{cfg.label}</Tag>
+      },
+    },
+    {
+      title: 'AI总分',
+      dataIndex: 'ai_total_score',
+      render: (v: number) => v != null ? v.toFixed(1) : '-',
+    },
+    { title: '投递时间', dataIndex: 'applied_at', render: (v: string) => v?.slice(0, 10) },
+  ]
+
+  return (
+    <div>
+      <h2 style={{ marginBottom: 24 }}>仪表盘</h2>
+
+      {/* 统计卡片 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <Card><Statistic title="活跃岗位" value={jobs.filter(j => j.status === 'active').length} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="总申请数" value={applications.length} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="AI已打分" value={scoredApps.length} /></Card>
+        </Col>
+        <Col span={6}>
+          <Card><Statistic title="已录用" value={statusCounts['hired'] ?? 0} /></Card>
+        </Col>
+      </Row>
+
+      <Row gutter={16}>
+        {/* AI 打分雷达图 */}
+        <Col span={10}>
+          <Card title="AI 打分维度均值">
+            {radarData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <RadarChart data={radarData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" />
+                  <Radar dataKey="value" stroke="#667eea" fill="#667eea" fillOpacity={0.3} />
+                  <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                </RadarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>暂无打分数据</div>
+            )}
+          </Card>
+        </Col>
+
+        {/* 最近申请 */}
+        <Col span={14}>
+          <Card title="最近申请">
+            <Table
+              dataSource={applications.slice(0, 8)}
+              columns={recentColumns}
+              rowKey="id"
+              pagination={false}
+              size="small"
+            />
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/constants/status.ts`
+
+```typescript
+import type { ApplicationStatus } from '@/types'
+
+export const STATUS_CONFIG: Record<ApplicationStatus, { label: string; color: string }> = {
+  submitted:      { label: '已投递',   color: 'blue' },
+  ai_scoring:     { label: 'AI打分中', color: 'processing' },
+  scoring_failed: { label: '打分失败', color: 'error' },
+  ai_scored:      { label: '已打分',   color: 'cyan' },
+  hr_review:      { label: 'HR审核',   color: 'geekblue' },
+  dept_review:    { label: '部门审核', color: 'purple' },
+  interview:      { label: '面试中',   color: 'orange' },
+  offered:        { label: '已Offer',  color: 'lime' },
+  hired:          { label: '已录用',   color: 'success' },
+  rejected:       { label: '已淘汰',   color: 'default' },
+}
+```
+
+---
+
+### `frontend/src/pages/Applications.tsx`
+
+```typescript
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Table, Tag, Select, Button, Space, message, Tooltip } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { applicationsApi } from '@/services/applications'
+import { STATUS_CONFIG } from '@/constants/status'
+import type { Application, ApplicationStatus } from '@/types'
+import { useState } from 'react'
+
+export default function ApplicationsPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | undefined>()
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['applications', statusFilter],
+    queryFn: () => applicationsApi.list({ status: statusFilter, limit: 50 }),
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: applicationsApi.retryScoring,
+    onSuccess: () => {
+      message.success('已重新触发打分')
+      queryClient.invalidateQueries({ queryKey: ['applications'] })
+    },
+  })
+
+  const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '岗位ID', dataIndex: 'job_id', width: 80 },
+    { title: '候选人ID', dataIndex: 'candidate_id', width: 90 },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (s: ApplicationStatus) => {
+        const cfg = STATUS_CONFIG[s]
+        return <Tag color={cfg.color}>{cfg.label}</Tag>
+      },
+    },
+    {
+      title: 'AI总分',
+      dataIndex: 'ai_total_score',
+      sorter: (a: Application, b: Application) =>
+        (a.ai_total_score ?? 0) - (b.ai_total_score ?? 0),
+      render: (v: number) => {
+        if (v == null) return '-'
+        const color = v >= 75 ? '#52c41a' :
+```
+读完聊天记录，从 `Applications.tsx` 的 `ai_total_score` render 截断处接着写 👇
+
+---
+
+### `frontend/src/pages/Applications.tsx`（续完）
+
+```typescript
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Table, Tag, Select, Button, Space, message } from 'antd'
+import { ReloadOutlined, EyeOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { applicationsApi } from '@/services/applications'
+import { STATUS_CONFIG } from '@/constants/status'
+import type { Application, ApplicationStatus } from '@/types'
+import { useState } from 'react'
+
+export default function ApplicationsPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | undefined>()
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['applications', statusFilter],
+    queryFn: () => applicationsApi.list({ status: statusFilter, limit: 50 }),
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: applicationsApi.retryScoring,
+    onSuccess: () => {
+      message.success('已重新触发打分')
+      queryClient.invalidateQueries({ queryKey: ['applications'] })
+    },
+  })
+
+  const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '岗位ID', dataIndex: 'job_id', width: 80 },
+    { title: '候选人ID', dataIndex: 'candidate_id', width: 90 },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (s: ApplicationStatus) => {
+        const cfg = STATUS_CONFIG[s]
+        return <Tag color={cfg.color}>{cfg.label}</Tag>
+      },
+    },
+    {
+      title: 'AI总分',
+      dataIndex: 'ai_total_score',
+      sorter: (a: Application, b: Application) =>
+        (a.ai_total_score ?? 0) - (b.ai_total_score ?? 0),
+      render: (v: number) => {
+        if (v == null) return '-'
+        const color = v >= 75 ? '#52c41a' : v >= 50 ? '#faad14' : '#ff4d4f'
+        return <span style={{ color, fontWeight: 700 }}>{v.toFixed(1)}</span>
+      },
+    },
+    {
+      title: '投递时间',
+      dataIndex: 'applied_at',
+      render: (v: string) => v?.slice(0, 10),
+    },
+    {
+      title: '操作',
+      render: (_: unknown, record: Application) => (
+        <Space>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/applications/${record.id}`)}
+          >
+            详情
+          </Button>
+          {record.status === 'scoring_failed' && (
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              danger
+              loading={retryMutation.isPending}
+              onClick={() => retryMutation.mutate(record.id)}
+            >
+              重试打分
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>申请管理</h2>
+        <Select
+          allowClear
+          placeholder="筛选状态"
+          style={{ width: 160 }}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={Object.entries(STATUS_CONFIG).map(([k, v]) => ({
+            label: v.label,
+            value: k,
+          }))}
+        />
+      </div>
+      <Table
+        dataSource={data}
+        columns={columns}
+        rowKey="id"
+        loading={isLoading}
+        pagination={{ pageSize: 20 }}
+      />
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/pages/ApplicationDetail.tsx`
+
+```typescript
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Card, Descriptions, Tag, Button, Select, Input,
+  Modal, message, Row, Col, Progress, Steps, Spin,
+} from 'antd'
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  ResponsiveContainer, Tooltip,
+} from 'recharts'
+import { useState } from 'react'
+import { applicationsApi } from '@/services/applications'
+import { STATUS_CONFIG } from '@/constants/status'
+import { VALID_TRANSITIONS_FRONTEND } from '@/constants/transitions'
+import type { ApplicationStatus } from '@/types'
+import { useAuthStore } from '@/store/authStore'
+
+export default function ApplicationDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [nextStatus, setNextStatus] = useState<ApplicationStatus | null>(null)
+  const [notes, setNotes] = useState('')
+
+  const { data: app, isLoading } = useQuery({
+    queryKey: ['application', id],
+    queryFn: () => applicationsApi.get(Number(id)),
+    refetchInterval: (query) => {
+      // AI 打分中时每 3 秒轮询一次
+      const status = query.state.data?.status
+      return status === 'ai_scoring' || status === 'submitted' ? 3000 : false
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ status, notes }: { status: ApplicationStatus; notes: string }) =>
+      applicationsApi.updateStatus(Number(id), status, notes),
+    onSuccess: () => {
+      message.success('状态已更新')
+      queryClient.invalidateQueries({ queryKey: ['application', id] })
+      setModalOpen(false)
+      setNotes('')
+    },
+    onError: (err: any) => {
+      message.error(err.response?.data?.detail ?? '操作失败')
+    },
+  })
+
+  if (isLoading) return <Spin size="large" style={{ display: 'block', marginTop: 80 }} />
+  if (!app) return <div>申请不存在</div>
+
+  const cfg = STATUS_CONFIG[app.status]
+  const allowedNext = VALID_TRANSITIONS_FRONTEND[app.status] ?? []
+
+  // AI 5维度雷达图数据
+  const radarData = [
+    { subject: '学历匹配', value: app.score_education ?? 0, full: 20 },
+    { subject: '经验匹配', value: app.score_experience ?? 0, full: 25 },
+    { subject: '技能匹配', value: app.score_skill ?? 0, full: 30 },
+    { subject: '稳定性',   value: app.score_stability ?? 0, full: 15 },
+    { subject: '整体印象', value: app.score_impression ?? 0, full: 10 },
+  ].map((d) => ({ ...d, pct: (d.value / d.full) * 100 }))
+
+  // 状态步骤条（主流程，不含 scoring_failed）
+  const mainSteps = [
+    'submitted', 'ai_scoring', 'ai_scored',
+    'hr_review', 'dept_review', 'interview', 'offered', 'hired',
+  ]
+  const currentStep = mainSteps.indexOf(app.status)
+
+  return (
+    <div>
+      <Button onClick={() => navigate(-1)} style={{ marginBottom: 16 }}>← 返回</Button>
+
+      {/* 状态步骤条 */}
+      <Card style={{ marginBottom: 16 }}>
+        <Steps
+          current={currentStep >= 0 ? currentStep : 0}
+          status={app.status === 'rejected' ? 'error' : app.status === 'scoring_failed' ? 'error' : 'process'}
+          size="small"
+          items={mainSteps.map((s) => ({ title: STATUS_CONFIG[s as ApplicationStatus].label }))}
+        />
+      </Card>
+
+      <Row gutter={16}>
+        {/* 基本信息 */}
+        <Col span={14}>
+          <Card title="申请信息" style={{ marginBottom: 16 }}>
+            <Descriptions column={2} size="small">
+              <Descriptions.Item label="申请ID">{app.id}</Descriptions.Item>
+              <Descriptions.Item label="岗位ID">{app.job_id}</Descriptions.Item>
+              <Descriptions.Item label="候选人ID">{app.candidate_id}</Descriptions.Item>
+              <Descriptions.Item label="简历ID">{app.resume_id}</Descriptions.Item>
+              <Descriptions.Item label="当前状态">
+                <Tag color={cfg.color}>{cfg.label}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="投递时间">{app.applied_at?.slice(0, 10)}</Descriptions.Item>
+              {app.hr_notes && (
+                <Descriptions.Item label="HR备注" span={2}>{app.hr_notes}</Descriptions.Item>
+              )}
+              {app.dept_notes && (
+                <Descriptions.Item label="部门备注" span={2}>{app.dept_notes}</Descriptions.Item>
+              )}
+              {app.scoring_error && (
+                <Descriptions.Item label="打分错误" span={2}>
+                  <span style={{ color: '#ff4d4f' }}>{app.scoring_error}</span>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {/* 流转操作按钮 */}
+            {allowedNext.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Button
+                  type="primary"
+                  onClick={() => setModalOpen(true)}
+                >
+                  推进状态
+                </Button>
+              </div>
+            )}
+          </Card>
+
+          {/* AI 总结 */}
+          {app.ai_summary && (
+            <Card title="AI 分析总结" style={{ marginBottom: 16 }}>
+              <p style={{ margin: 0 }}>{app.ai_summary}</p>
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={12}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: '#52c41a' }}>优势</div>
+                  {(JSON.parse(app.ai_strengths ?? '[]') as string[]).map((s, i) => (
+                    <div key={i} style={{ marginBottom: 4 }}>✅ {s}</div>
+                  ))}
+                </Col>
+                <Col span={12}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: '#ff4d4f' }}>不足</div>
+                  {(JSON.parse(app.ai_weaknesses ?? '[]') as string[]).map((s, i) => (
+                    <div key={i} style={{ marginBottom: 4 }}>⚠️ {s}</div>
+                  ))}
+                </Col>
+              </Row>
+            </Card>
+          )}
+        </Col>
+
+        {/* AI 打分面板 */}
+        <Col span={10}>
+          <Card title="AI 打分详情">
+            {app.ai_total_score != null ? (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  <div style={{ fontSize: 48, fontWeight: 700, color: app.ai_total_score >= 75 ? '#52c41a' : app.ai_total_score >= 50 ? '#faad14' : '#ff4d4f' }}>
+                    {app.ai_total_score.toFixed(1)}
+                  </div>
+                  <div style={{ color: '#888' }}>综合得分 / 100</div>
+                </div>
+
+                {radarData.map((d) => (
+                  <div key={d.subject} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span>{d.subject}</span>
+                      <span>{d.value.toFixed(1)} / {d.full}</span>
+                    </div>
+                    <Progress
+                      percent={Math.round(d.pct)}
+                      size="small"
+                      strokeColor={d.pct >= 75 ? '#52c41a' : d.pct >= 50 ? '#faad14' : '#ff4d4f'}
+                      showInfo={false}
+                    />
+                  </div>
+                ))}
+
+                <ResponsiveContainer width="100%" height={220} style={{ marginTop: 16 }}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid />
+                    <PolarAngleAxis dataKey="subject" style={{ fontSize: 11 }} />
+                    <Radar dataKey="pct" stroke="#667eea" fill="#667eea" fillOpacity={0.3} />
+                    <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
+                {app.status === 'ai_scoring' ? (
+                  <><Spin /> <div style={{ marginTop: 8 }}>AI 打分中...</div></>
+                ) : app.status === 'scoring_failed' ? (
+                  <div style={{ color: '#ff4d4f' }}>打分失败</div>
+                ) : (
+                  '暂无打分数据'
+                )}
+              </div>
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 状态流转弹窗 */}
+      <Modal
+        title="推进申请状态"
+        open={modalOpen}
+        onOk={() => nextStatus && updateMutation.mutate({ status: nextStatus, notes })}
+        onCancel={() => setModalOpen(false)}
+        confirmLoading={updateMutation.isPending}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 8 }}>选择目标状态：</div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="请选择"
+            value={nextStatus}
+            onChange={setNextStatus}
+            options={allowedNext.map((s: ApplicationStatus) => ({
+              label: STATUS_CONFIG[s].label,
+              value: s,
+            }))}
+          />
+        </div>
+        <div>
+          <div style={{ marginBottom: 8 }}>备注（可选）：</div>
+          <Input.TextArea
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="填写审核意见..."
+          />
+        </div>
+      </Modal>
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/constants/transitions.ts`
+
+```typescript
+import type { ApplicationStatus } from '@/types'
+
+// 前端用的合法流转规则（和后端 VALID_TRANSITIONS 一一对应）
+export const VALID_TRANSITIONS_FRONTEND: Record<ApplicationStatus, ApplicationStatus[]> = {
+  submitted:      ['ai_scoring'],
+  ai_scoring:     ['ai_scored', 'scoring_failed'],
+  scoring_failed: ['ai_scoring'],
+  ai_scored:      ['hr_review', 'rejected'],
+  hr_review:      ['dept_review', 'rejected'],
+  dept_review:    ['interview', 'rejected'],
+  interview:      ['offered', 'rejected'],
+  offered:        ['hired', 'rejected'],
+  hired:          [],
+  rejected:       [],
+}
+```
+
+---
+
+### `frontend/src/pages/Jobs.tsx`
+
+```typescript
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Table, Tag, Button, Space, Modal, Form, Input, Select, InputNumber, message } from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { jobsApi } from '@/services/jobs'
+import type { Job, JobStatus, EducationLevel } from '@/types'
+import { useAuthStore } from '@/store/authStore'
+
+const JOB_STATUS_COLOR: Record<JobStatus, string> = {
+  draft: 'default', active: 'success', paused: 'warning', closed: 'error',
+}
+
+const EDU_LABELS: Record<EducationLevel, string> = {
+  any: '不限', junior_college: '大专', bachelor: '本科', master: '硕士', phd: '博士',
+}
+
+export default function JobsPage() {
+  const queryClient = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [form] = Form.useForm()
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => jobsApi.list({ limit: 100 }),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: jobsApi.create,
+    onSuccess: () => {
+      message.success('岗位创建成功')
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      setModalOpen(false)
+      form.resetFields()
+    },
+    onError: (err: any) => message.error(err.response?.data?.detail ?? '创建失败'),
+  })
+
+  const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '岗位名称', dataIndex: 'title' },
+    { title: '部门', dataIndex: 'department' },
+    {
+      title: '学历要求',
+      dataIndex: 'required_education',
+      render: (v: EducationLevel) => EDU_LABELS[v],
+    },
+    { title: '经验要求', dataIndex: 'required_experience_years', render: (v: number) => `${v}年` },
+    { title: '招聘人数', dataIndex: 'headcount' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (s: JobStatus) => <Tag color={JOB_STATUS_COLOR[s]}>{s}</Tag>,
+    },
+    { title: '创建时间', dataIndex: 'created_at', render: (v: string) => v?.slice(0, 10) },
+  ]
+
+  const canCreate = user?.role === 'hr' || user?.role === 'admin'
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>岗位管理</h2>
+        {canCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            新建岗位
+          </Button>
+        )}
+      </div>
+
+      <Table dataSource={data} columns={columns} rowKey="id" loading={isLoading} />
+
+      <Modal
+        title="新建岗位"
+        open={modalOpen}
+        onOk={() => form.submit()}
+        onCancel={() => setModalOpen(false)}
+        confirmLoading={createMutation.isPending}
+        width={640}
+      >
+        <Form form={form} layout="vertical" onFinish={createMutation.mutate}>
+          <Form.Item name="title" label="岗位名称" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="department" label="部门" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="职位描述" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="requirements" label="任职要求" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="required_education" label="学历要求" initialValue="bachelor">
+            <Select options={Object.entries(EDU_LABELS).map(([k, v]) => ({ value: k, label: v }))} />
+          </Form.Item>
+          <Form.Item name="required_experience_years" label="工作年限" initialValue={0}>
+            <InputNumber min={0} max={30} addonAfter="年" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="headcount" label="招聘人数" initialValue={1}>
+            <InputNumber min={1} max={999} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="location" label="工作地点">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/pages/Candidates.tsx`
+
+```typescript
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Table, Button, Modal, Form, Input, Upload, message, Space } from 'antd'
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { candidatesApi } from '@/services/candidates'
+import type { Candidate } from '@/types'
+
+export default function CandidatesPage() {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [form] = Form.useForm()
+  const [fileList, setFileList] = useState<any[]>([])
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['candidates'],
+    queryFn: () => candidatesApi.list({ limit: 100 }),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: candidatesApi.create,
+    onSuccess: () => {
+      message.success('候选人已添加')
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+      setCreateOpen(false)
+      form.resetFields()
+    },
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ candidateId, file }: { candidateId: number; file: File }) =>
+      candidatesApi.uploadResume(candidateId, file),
+    onSuccess: () => {
+      message.success('简历上传成功，AI 将自动解析')
+      setUploadOpen(false)
+      setFileList([])
+    },
+    onError: (err: any) => message.error(err.response?.data?.detail ?? '上传失败'),
+  })
+
+  const handleUpload = () => {
+    if (!selectedId || fileList.length === 0) return
+    uploadMutation.mutate({ candidateId: selectedId, file: fileList[0].originFileObj })
+  }
+
+  const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '姓名', dataIndex: 'name' },
+    { title: '邮箱', dataIndex: 'email' },
+    { title: '电话', dataIndex: 'phone' },
+    { title: '来源', dataIndex: 'source' },
+    { title: '创建时间', dataIndex: 'created_at', render: (v: string) => v?.slice(0, 10) },
+    {
+      title: '操作',
+      render: (_: unknown, record: Candidate) => (
+        <Button
+          size="small"
+          icon={<UploadOutlined />}
+          onClick={() => { setSelectedId(record.id); setUploadOpen(true) }}
+        >
+          上传简历
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>候选人管理</h2>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          添加候选人
+        </Button>
+      </div>
+
+      <Table dataSource={data} columns={columns} rowKey="id" loading={isLoading} />
+
+      {/* 新建候选人弹窗 */}
+      <Modal
+        title="添加候选人"
+        open={createOpen}
+        onOk={() => form.submit()}
+        onCancel={() => setCreateOpen(false)}
+        confirmLoading={createMutation.isPending}
+      >
+        <Form form={form} layout="vertical" onFinish={createMutation.mutate}>
+          <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="email" label="邮箱">
+            <Input />
+          </Form.Item>
+          <Form.Item name="phone" label="电话">
+            <Input />
+          </Form.Item>
+          <Form.Item name="source" label="来源渠道">
+            <Input placeholder="如：BOSS直聘、猎头、内推" />
+          </Form.Item>
+          <Form.Item name="notes" label="备注">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 上传简历弹窗 */}
+      <Modal
+        title={`上传简历 — 候选人ID: ${selectedId}`}
+        open={uploadOpen}
+        onOk={handleUpload}
+        onCancel={() => { setUploadOpen(false); setFileList([]) }}
+        confirmLoading={uploadMutation.isPending}
+      >
+        <Upload
+          beforeUpload={() => false}
+          fileList={fileList}
+          onChange={({ fileList }) => setFileList(fileList.slice(-1))}
+          accept=".pdf,.docx,.txt"
+        >
+          <Button icon={<UploadOutlined />}>选择文件（PDF / DOCX / TXT）</Button>
+        </Upload>
+      </Modal>
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/pages/Users.tsx`
+
+```typescript
+import { useQuery } from '@tanstack/react-query'
+import { Table, Tag } from 'antd'
+import { authApi } from '@/services/auth'
+import { useAuthStore } from '@/store/authStore'
+
+const ROLE_COLOR: Record<string, string> = {
+  admin: 'red', hr: 'blue', dept_leader: 'purple', analyst: 'green',
+}
+
+export default function UsersPage() {
+  const user = useAuthStore((s) => s.user)
+
+  // 只有 admin 才能看用户列表，其他角色只能看自己
+  const isSingleUser = user?.role !== 'admin'
+
+  const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '姓名', dataIndex: 'full_name' },
+    { title: '邮箱', dataIndex: 'email' },
+    {
+      title: '角色',
+      dataIndex: 'role',
+      render: (r: string) => <Tag color={ROLE_COLOR[r]}>{r}</Tag>,
+    },
+    { title: '部门', dataIndex: 'department' },
+    {
+      title: '状态',
+      dataIndex: 'is_active',
+      render: (v: boolean) => <Tag color={v ? 'success' : 'default'}>{v ? '正常' : '停用'}</Tag>,
+    },
+  ]
+
+  return (
+    <div>
+      <h2 style={{ marginBottom: 16 }}>用户管理</h2>
+      {isSingleUser ? (
+        <Table
+          dataSource={user ? [user] : []}
+          columns={columns}
+          rowKey="id"
+          pagination={false}
+        />
+      ) : (
+        <div style={{ color: '#888' }}>Admin 用户列表接口待接入</div>
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+### `frontend/src/main.tsx`
+
+```typescript
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { RouterProvider } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ConfigProvider } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
+import { router } from './router'
+import 'antd/dist/reset.css'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30_000,
+    },
+  },
+})
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#667eea' } }}>
+        <RouterProvider router={router} />
+      </ConfigProvider>
+    </QueryClientProvider>
+  </React.StrictMode>
+)
+```
+
+---
+
+### `frontend/index.html`
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 招聘系统</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module
+```
+读完聊天记录，从 `index.html` 截断处继续 👇
+
+---
+
+### `frontend/index.html`（续完）
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 招聘系统</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+---
+
+### `frontend/src/pages/JobDetail.tsx`
+
+```typescript
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Card, Descriptions, Tag, Button, Spin, Table } from 'antd'
+import { jobsApi } from '@/services/jobs'
+import { applicationsApi } from '@/services/applications'
+import { STATUS_CONFIG } from '@/constants/status'
+import type { ApplicationStatus, EducationLevel, JobStatus } from '@/types'
+
+const EDU_LABELS: Record<EducationLevel, string> = {
+  any: '不限', junior_college: '大专', bachelor: '本科', master: '硕士', phd: '博士',
+}
+
+const JOB_STATUS_COLOR: Record<JobStatus, string> = {
+  draft: 'default', active: 'success', paused: 'warning', closed: 'error',
+}
+
+export default function JobDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+
+  const { data: job, isLoading: jobLoading } = useQuery({
+    queryKey: ['job', id],
+    queryFn: () => jobsApi.get(Number(id)),
+  })
+
+  const { data: applications = [], isLoading: appLoading } = useQuery({
+    queryKey: ['applications', 'job', id],
+    queryFn: () => applicationsApi.list({ job_id: Number(id), limit: 100 }),
+  })
+
+  if (jobLoading) return <Spin size="large" style={{ display: 'block', marginTop: 80 }} />
+  if (!job) return <div>岗位不存在</div>
+
+  const appColumns = [
+    { title: 'ID', dataIndex: 'id', width: 70 },
+    { title: '候选人ID', dataIndex: 'candidate_id' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (s: ApplicationStatus) => {
+        const cfg = STATUS_CONFIG[s]
+        return <Tag color={cfg.color}>{cfg.label}</Tag>
+      },
+    },
+    {
+      title: 'AI总分',
+      dataIndex: 'ai_total_score',
+      sorter: (a: any, b: any) => (a.ai_total_score ?? 0) - (b.ai_total_score ?? 0),
+      render: (v: number) => {
+        if (v == null) return '-'
+        const color = v >= 75 ? '#52c41a' : v >= 50 ? '#faad14' : '#ff4d4f'
+        return <span style={{ color, fontWeight: 700 }}>{v.toFixed(1)}</span>
+      },
+    },
+    { title: '投递时间', dataIndex: 'applied_at', render: (v: string) => v?.slice(0, 10) },
+    {
+      title: '操作',
+      render: (_: unknown, record: any) => (
+        <Button size="small" onClick={() => navigate(`/applications/${record.id}`)}>
+          查看
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <Button onClick={() => navigate(-1)} style={{ marginBottom: 16 }}>← 返回</Button>
+
+      <Card title={`岗位详情 — ${job.title}`} style={{ marginBottom: 16 }}>
+        <Descriptions column={2} size="small">
+          <Descriptions.Item label="岗位名称">{job.title}</Descriptions.Item>
+          <Descriptions.Item label="部门">{job.department}</Descriptions.Item>
+          <Descriptions.Item label="学历要求">{EDU_LABELS[job.required_education]}</Descriptions.Item>
+          <Descriptions.Item label="工作年限">{job.required_experience_years} 年</Descriptions.Item>
+          <Descriptions.Item label="招聘人数">{job.headcount}</Descriptions.Item>
+          <Descriptions.Item label="工作地点">{job.location ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="薪资范围">
+            {job.salary_min && job.salary_max
+              ? `${job.salary_min / 1000}k - ${job.salary_max / 1000}k`
+              : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <Tag color={JOB_STATUS_COLOR[job.status]}>{job.status}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="职位描述" span={2}>{job.description}</Descriptions.Item>
+          <Descriptions.Item label="任职要求" span={2}>{job.requirements}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      <Card title={`该岗位申请列表（共 ${applications.length} 条）`}>
+        <Table
+          dataSource={applications}
+          columns={appColumns}
+          rowKey="id"
+          loading={appLoading}
+          pagination={{ pageSize: 10 }}
+        />
+      </Card>
+    </div>
+  )
+}
+```
+
+---
+
+前端文件全部输出完毕 ✅
+
+**让本地 agent 执行的顺序：**
+
+```bash
+# 1. 进前端目录
+cd "F:\agent项目\AI简历招聘\frontend"
+
+# 2. 安装依赖
+npm install
+
+# 3. 启动开发服务器
+npm run dev
+```
+
+打开 `http://localhost:3000` 就能看到登录页了 🎉
+
+后端确保在 `http://localhost:8000` 跑着，vite proxy 会自动转发 `/api` 请求。
+
+完美，开写 🚀
+
+---
+
+## 第一步：补充依赖
+
+在 `backend/requirements.txt` 里加上这几行：
+
+```txt
+openai>=1.30.0
+pdfplumber>=0.11.0
+python-docx>=1.1.0
+```
+
+然后执行：
+
+```bash
+pip install openai pdfplumber python-docx
+```
+
+---
+
+## 第二步：更新 `.env`
+
+```env
+# LM Studio 本地配置
+LLM_BASE_URL=http://192.168.2.66:1235/v1
+LLM_API_KEY=lm-studio
+LLM_MODEL=qwen3.6-35b-a3b-abliterated-heretic-q4_k_m
+LLM_TIMEOUT=120
+LLM_MAX_RETRIES=3
+```
+
+---
+
+## 第三步：更新 `backend/app/core/config.py`
+
+```python
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    # App
+    APP_NAME: str = "AI Recruitment System"
+    DEBUG: bool = False
+
+    # Database
+    DATABASE_URL: str
+
+    # JWT
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # LLM
+    LLM_BASE_URL: str = "http://192.168.2.66:1235/v1"
+    LLM_API_KEY: str = "lm-studio"
+    LLM_MODEL: str = "qwen3.6-35b-a3b-abliterated-heretic-q4_k_m"
+    LLM_TIMEOUT: int = 120
+    LLM_MAX_RETRIES: int = 3
+
+    # File upload
+    UPLOAD_DIR: str = "./uploads"
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+settings = Settings()
+```
+
+---
+
+## 第四步：完整 `backend/app/services/ai_service.py`
+
+````python
+import json
+import re
+import logging
+from pathlib import Path
+from typing import Optional
+from dataclasses import dataclass
+
+from openai import OpenAI
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# ── 打分结果数据结构 ──────────────────────────────────────
+@dataclass
+class ScoreResult:
+    education_match: float    # 满分 20
+    experience_match: float   # 满分 25
+    skill_match: float        # 满分 30
+    stability: float          # 满分 15
+    overall_impression: float # 满分 10
+    total: float              # 满分 100
+    summary: str
+    strengths: list[str]
+    weaknesses: list[str]
+
+
+# ── 默认兜底分（打分失败时使用） ──────────────────────────
+DEFAULT_SCORE = ScoreResult(
+    education_match=0,
+    experience_match=0,
+    skill_match=0,
+    stability=0,
+    overall_impression=0,
+    total=0,
+    summary="AI打分失败，请人工审核",
+    strengths=[],
+    weaknesses=["AI自动打分未能完成，需人工评估"],
+)
+
+
+class AIService:
+    def __init__(self):
+        self.client = OpenAI(
+            base_url=settings.LLM_BASE_URL,
+            api_key=settings.LLM_API_KEY,
+            timeout=settings.LLM_TIMEOUT,
+        )
+        self.model = settings.LLM_MODEL
+
+    # ── 简历文本提取 ──────────────────────────────────────
+    async def parse_resume_text(self, file_path: str) -> str:
+        """从文件路径提取纯文本，支持 PDF / DOCX / TXT"""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"简历文件不存在: {file_path}")
+
+        suffix = path.suffix.lower()
+
+        try:
+            if suffix == ".pdf":
+                return self._extract_pdf(path)
+            elif suffix in (".docx", ".doc"):
+                return self._extract_docx(path)
+            elif suffix == ".txt":
+                return path.read_text(encoding="utf-8", errors="ignore")
+            else:
+                raise ValueError(f"不支持的文件格式: {suffix}")
+        except Exception as e:
+            logger.error(f"简历文本提取失败: {e}")
+            raise
+
+    def _extract_pdf(self, path: Path) -> str:
+        import pdfplumber
+        texts = []
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    texts.append(text)
+        return "\n".join(texts)
+
+    def _extract_docx(self, path: Path) -> str:
+        from docx import Document
+        doc = Document(str(path))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    # ── 去除 Qwen3 的 <think>...</think> 思考标签 ────────
+    def _strip_thinking(self, text: str) -> str:
+        """Qwen3 会输出 <think>...</think> 思考过程，需要剥离"""
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    # ── 从响应中提取 JSON ─────────────────────────────────
+    def _extract_json(self, text: str) -> dict:
+        """
+        尝试从模型输出中提取 JSON，支持三种情况：
+        1. 纯 JSON
+        2. ```json ... ``` 代码块包裹
+        3. JSON 混在其他文字中
+        """
+        # 先去掉思考标签
+        text = self._strip_thinking(text)
+
+        # 尝试直接解析
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试提取 ```json 代码块
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试提取第一个完整的 { } 块
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError(f"无法从模型输出中提取 JSON，原始输出：\n{text[:500]}")
+
+    # ── 核心打分方法 ──────────────────────────────────────
+    async def score_resume(
+        self,
+        resume_text: str,
+        job_title: str,
+        job_requirements: str,
+        required_education: str,
+        required_experience_years: int,
+        required_skills: list[str],
+    ) -> ScoreResult:
+        """
+        5维度 AI 打分，失败自动重试 LLM_MAX_RETRIES 次
+        """
+        prompt = self._build_scoring_prompt(
+            resume_text=resume_text,
+            job_title=job_title,
+            job_requirements=job_requirements,
+            required_education=required_education,
+            required_experience_years=required_experience_years,
+            required_skills=required_skills,
+        )
+
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, settings.LLM_MAX_RETRIES + 1):
+            try:
+                logger.info(f"AI打分第 {attempt} 次尝试，岗位：{job_title}")
+
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是一名专业的HR招聘评估专家。"
+                                "你的任务是根据岗位要求对候选人简历进行客观评分。"
+                                "你必须严格按照要求的JSON格式输出，不要输出任何其他内容。"
+                                # 关闭 Qwen3 的 thinking 模式，加快速度
+                                "/no_think"
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,   # 低温度确保输出稳定
+                    max_tokens=1500,
+                )
+
+                raw_output = response.choices[0].message.content or ""
+                logger.debug(f"模型原始输出（前300字）：{raw_output[:300]}")
+
+                data = self._extract_json(raw_output)
+                return self._parse_score_result(data)
+
+            except Exception as e:
+                last_error = e
+                logger.warning(f"第 {attempt} 次打分失败：{e}")
+
+        # 超过最大重试次数，抛出最后一次异常
+        raise RuntimeError(
+            f"AI打分在 {settings.LLM_MAX_RETRIES} 次重试后仍失败：{last_error}"
+        )
+
+    # ── 构建打分 Prompt ───────────────────────────────────
+    def _build_scoring_prompt(
+        self,
+        resume_text: str,
+        job_title: str,
+        job_requirements: str,
+        required_education: str,
+        required_experience_years: int,
+        required_skills: list[str],
+    ) -> str:
+        edu_map = {
+            "any": "不限",
+            "junior_college": "大专",
+            "bachelor": "本科",
+            "master": "硕士",
+            "phd": "博士",
+        }
+        edu_label = edu_map.get(required_education, required_education)
+        skills_str = "、".join(required_skills) if required_skills else "无特殊要求"
+
+        # 简历截断，避免超出 context
+        resume_truncated = resume_text[:4000] if len(resume_text) > 4000 else resume_text
+
+        return f"""请对以下候选人简历进行评分。
+
+## 岗位信息
+- 岗位名称：{job_title}
+- 学历要求：{edu_label}
+- 工作年限要求：{required_experience_years}年以上
+- 技能要求：{skills_str}
+- 岗位要求详情：
+{job_requirements}
+
+## 候选人简历
+{resume_truncated}
+
+## 评分标准（总分100分）
+
+| 维度 | 满分 | 说明 |
+|------|------|------|
+| education_match（学历匹配） | 20分 | 候选人学历与岗位要求的匹配程度 |
+| experience_match（经验匹配） | 25分 | 工作年限、行业经验与岗位的匹配程度 |
+| skill_match（技能匹配） | 30分 | 技术技能、专业技能与岗位要求的匹配程度 |
+| stability（稳定性） | 15分 | 工作稳定性，跳槽频率，平均在职时长 |
+| overall_impression（整体印象） | 10分 | 简历完整度、表达清晰度、综合潜力 |
+
+## 输出要求
+只输出以下JSON格式，不要有任何其他文字：
+
+{{
+  "education_match": <0-20的数字>,
+  "experience_match": <0-25的数字>,
+  "skill_match": <0-30的数字>,
+  "stability": <0-15的数字>,
+  "overall_impression": <0-10的数字>,
+  "total": <以上5项之和>,
+  "summary": "<100字以内的中文总结评语>",
+  "strengths": ["优势1", "优势2", "优势3"],
+  "weaknesses": ["不足1", "不足2"]
+}}"""
+
+    # ── 解析模型返回的 JSON 为 ScoreResult ────────────────
+    def _parse_score_result(self, data: dict) -> ScoreResult:
+        def clamp(val, max_val):
+            """限制分数在合法范围内"""
+            try:
+                return max(0.0, min(float(val), float(max_val)))
+            except (TypeError, ValueError):
+                return 0.0
+
+        education_match  = clamp(data.get("education_match", 0), 20)
+        experience_match = clamp(data.get("experience_match", 0), 25)
+        skill_match      = clamp(data.get("skill_match", 0), 30)
+        stability        = clamp(data.get("stability", 0), 15)
+        overall          = clamp(data.get("overall_impression", 0), 10)
+
+        # total 重新计算，不信任模型的求和
+        total = education_match + experience_match + skill_match + stability + overall
+
+        strengths  = data.get("strengths", [])
+        weaknesses = data.get("weaknesses", [])
+
+        # 确保是列表
+        if not isinstance(strengths, list):
+            strengths = [str(strengths)]
+        if not isinstance(weaknesses, list):
+            weaknesses = [str(weaknesses)]
+
+        return ScoreResult(
+            education_match=education_match,
+            experience_match=experience_match,
+            skill_match=skill_match,
+            stability=stability,
+            overall_impression=overall,
+            total=round(total, 1),
+            summary=str(data.get("summary", ""))[:500],
+            strengths=strengths[:5],    # 最多5条
+            weaknesses=weaknesses[:5],  # 最多5条
+        )
+
+
+# 单例
+ai_service = AIService()
+````
+
+---
+
+## 第五步：测试脚本（可选，直接验证打分是否通）
+
+新建 `backend/test_ai.py`：
+
+```python
+"""
+快速测试 AI 打分是否正常工作
+运行方式：cd backend && python test_ai.py
+"""
+import asyncio
+from app.services.ai_service import ai_service
+
+
+async def main():
+    resume_text = """
+    姓名：张三
+    学历：本科，计算机科学与技术，2018年毕业
+    工作经历：
+    2018-2020  XX科技有限公司  后端开发工程师
+      - 负责用户服务模块开发，使用Python + FastAPI
+      - 参与数据库设计，熟练使用PostgreSQL
+    2020-2024  YY互联网公司  高级后端工程师
+      - 独立负责订单系统重构，QPS从500提升至5000
+      - 熟练使用Docker、Kubernetes进行服务部署
+      - 熟悉Redis缓存、消息队列RabbitMQ
+    技能：Python、FastAPI、PostgreSQL、Redis、Docker、Linux
+    """
+
+    result = await ai_service.score_resume(
+        resume_text=resume_text,
+        job_title="高级后端工程师",
+        job_requirements="负责核心业务系统开发，需要有高并发系统经验",
+        required_education="bachelor",
+        required_experience_years=3,
+        required_skills=["Python", "FastAPI", "PostgreSQL", "Docker"],
+    )
+
+    print(f"学历匹配：{result.education_match} / 20")
+    print(f"经验匹配：{result.experience_match} / 25")
+    print(f"技能匹配：{result.skill_match} / 30")
+    print(f"稳定性：  {result.stability} / 15")
+    print(f"整体印象：{result.overall_impression} / 10")
+    print(f"总分：    {result.total} / 100")
+    print(f"总结：    {result.summary}")
+    print(f"优势：    {result.strengths}")
+    print(f"不足：    {result.weaknesses}")
+
+
+asyncio.run(main())
+```
+
+---
+
+**执行顺序：**
+
+```bash
+# 1. 安装新依赖
+cd backend
+pip install openai pdfplumber python-docx
+
+# 2. 先跑测试脚本验证 AI 打分是否通
+python test_ai.py
+
+# 3. 没问题再重启后端服务
+uvicorn app.main:app --reload
+```
+
+测试脚本跑出分数说明打通了 🎉，有报错截给我 🔧
+读完聊天记录，你说得对！我看漏了任务书的要求 😅
+
+任务书明确规定的5维度是：
+
+| 维度   | 满分 | 字段名              |
+| ---- | -- | ---------------- |
+| 技能匹配 | 25 | score_skills     |
+| 经验匹配 | 25 | score_experience |
+| 学历匹配 | 20 | score_education  |
+| 发展潜力 | 15 | score_potential  |
+| 稳定性  | 15 | score_stability  |
+
+但我写成了错误的维度（把 potential 写成了 overall_impression）。
+
+---
+
+**现在立刻修正，分三步：**
+
+1. 修正 `models/application.py` 的字段名
+2. 修正 `ai_service.py` 的 ScoreResult 和 prompt
+3. 修正前端显示的维度名称
+
+---
+
+## 第一步：修正 `backend/app/models/application.py`
+
+```python
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Enum as SQLEnum, func
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+from enum import Enum
+
+
+class ApplicationStatus(str, Enum):
+    submitted = "submitted"
+    ai_scoring = "ai_scoring"
+    scoring_failed = "scoring_failed"
+    ai_scored = "ai_scored"
+    hr_review = "hr_review"
+    dept_review = "dept_review"
+    interview = "interview"
+    offered = "offered"
+    hired = "hired"
+    rejected = "rejected"
+
+
+VALID_TRANSITIONS = {
+    ApplicationStatus.submitted: [ApplicationStatus.ai_scoring],
+    ApplicationStatus.ai_scoring: [ApplicationStatus.ai_scored, ApplicationStatus.scoring_failed],
+    ApplicationStatus.scoring_failed: [ApplicationStatus.ai_scoring],
+    ApplicationStatus.ai_scored: [ApplicationStatus.hr_review, ApplicationStatus.rejected],
+    ApplicationStatus.hr_review: [ApplicationStatus.dept_review, ApplicationStatus.rejected],
+    ApplicationStatus.dept_review: [ApplicationStatus.interview, ApplicationStatus.rejected],
+    ApplicationStatus.interview: [ApplicationStatus.offered, ApplicationStatus.rejected],
+    ApplicationStatus.offered: [ApplicationStatus.hired, ApplicationStatus.rejected],
+    ApplicationStatus.hired: [],
+    ApplicationStatus.rejected: [],
+}
+
+
+class Application(Base):
+    __tablename__ = "applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=False, index=True)
+    resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False)
+
+    status = Column(SQLEnum(ApplicationStatus), default=ApplicationStatus.submitted, nullable=False, index=True)
+
+    # AI 5维度分数（修正后的字段名）
+    score_skills = Column(Float, nullable=True)          # 满分 25
+    score_experience = Column(Float, nullable=True)      # 满分 25
+    score_education = Column(Float, nullable=True)       # 满分 20
+    score_potential = Column(Float, nullable=True)       # 满分 15
+    score_stability = Column(Float, nullable=True)       # 满分 15
+
+    ai_total_score = Column(Float, nullable=True)
+    ai_summary = Column(Text, nullable=True)
+    ai_strengths = Column(Text, nullable=True)
+    ai_weaknesses = Column(Text, nullable=True)
+    scoring_error = Column(Text, nullable=True)
+
+    # 人工记录
+    reviewed_by_hr = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_by_dept = Column(Integer, ForeignKey("users.id"), nullable=True)
+    hr_notes = Column(Text, nullable=True)
+    dept_notes = Column(Text, nullable=True)
+    cover_letter = Column(Text, nullable=True)
+    interview_date = Column(DateTime, nullable=True)
+
+    applied_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    job = relationship("Job", back_populates="applications")
+    candidate = relationship("Candidate", back_populates="applications")
+    resume = relationship("Resume", back_populates="applications")
+```
+
+---
+
+## 第二步：修正 `backend/app/services/ai_service.py`
+
+````python
+import json
+import re
+import logging
+from pathlib import Path
+from typing import Optional
+from dataclasses import dataclass
+
+from openai import OpenAI
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# ── 打分结果数据结构（修正后的字段名） ──────────────────
+@dataclass
+class ScoreResult:
+    skills: float        # 满分 25
+    experience: float    # 满分 25
+    education: float     # 满分 20
+    potential: float     # 满分 15
+    stability: float     # 满分 15
+    total: float         # 满分 100
+    summary: str
+    strengths: list[str]
+    weaknesses: list[str]
+
+
+# ── 默认兜底分（打分失败时使用） ──────────────────────────
+DEFAULT_SCORE = ScoreResult(
+    skills=0,
+    experience=0,
+    education=0,
+    potential=0,
+    stability=0,
+    total=0,
+    summary="AI打分失败，请人工审核",
+    strengths=[],
+    weaknesses=["AI自动打分未能完成，需人工评估"],
+)
+
+
+class AIService:
+    def __init__(self):
+        self.client = OpenAI(
+            base_url=settings.LLM_BASE_URL,
+            api_key=settings.LLM_API_KEY,
+            timeout=settings.LLM_TIMEOUT,
+        )
+        self.model = settings.LLM_MODEL
+
+    # ── 简历文本提取 ──────────────────────────────────────
+    async def parse_resume_text(self, file_path: str) -> str:
+        """从文件路径提取纯文本，支持 PDF / DOCX / TXT"""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"简历文件不存在: {file_path}")
+
+        suffix = path.suffix.lower()
+
+        try:
+            if suffix == ".pdf":
+                return self._extract_pdf(path)
+            elif suffix in (".docx", ".doc"):
+                return self._extract_docx(path)
+            elif suffix == ".txt":
+                return path.read_text(encoding="utf-8", errors="ignore")
+            else:
+                raise ValueError(f"不支持的文件格式: {suffix}")
+        except Exception as e:
+            logger.error(f"简历文本提取失败: {e}")
+            raise
+
+    def _extract_pdf(self, path: Path) -> str:
+        import pdfplumber
+        texts = []
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    texts.append(text)
+        return "\n".join(texts)
+
+    def _extract_docx(self, path: Path) -> str:
+        from docx import Document
+        doc = Document(str(path))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    # ── 去除 Qwen3 的 <think>...</think> 思考标签 ────────
+    def _strip_thinking(self, text: str) -> str:
+        """Qwen3 会输出 <think>...</think> 思考过程，需要剥离"""
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    # ── 从响应中提取 JSON ─────────────────────────────────
+    def _extract_json(self, text: str) -> dict:
+        """
+        尝试从模型输出中提取 JSON，支持三种情况：
+        1. 纯 JSON
+        2. ```json ... ``` 代码块包裹
+        3. JSON 混在其他文字中
+        """
+        # 先去掉思考标签
+        text = self._strip_thinking(text)
+
+        # 尝试直接解析
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试提取 ```json 代码块
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试提取第一个完整的 { } 块
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError(f"无法从模型输出中提取 JSON，原始输出：\n{text[:500]}")
+
+    # ── 核心打分方法 ──────────────────────────────────────
+    async def score_resume(
+        self,
+        resume_text: str,
+        job_title: str,
+        job_requirements: str,
+        required_education: str,
+        required_experience_years: int,
+        required_skills: list[str],
+    ) -> ScoreResult:
+        """
+        5维度 AI 打分，失败自动重试 LLM_MAX_RETRIES 次
+        """
+        prompt = self._build_scoring_prompt(
+            resume_text=resume_text,
+            job_title=job_title,
+            job_requirements=job_requirements,
+            required_education=required_education,
+            required_experience_years=required_experience_years,
+            required_skills=required_skills,
+        )
+
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, settings.LLM_MAX_RETRIES + 1):
+            try:
+                logger.info(f"AI打分第 {attempt} 次尝试，岗位：{job_title}")
+
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是一名专业的HR招聘评估专家。"
+                                "你的任务是根据岗位要求对候选人简历进行客观评分。"
+                                "你必须严格按照要求的JSON格式输出，不要输出任何其他内容。"
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,   # 低温度确保输出稳定
+                    max_tokens=1500,
+                )
+
+                raw_output = response.choices[0].message.content or ""
+                logger.debug(f"模型原始输出（前300字）：{raw_output[:300]}")
+
+                data = self._extract_json(raw_output)
+                return self._parse_score_result(data)
+
+            except Exception as e:
+                last_error = e
+                logger.warning(f"第 {attempt} 次打分失败：{e}")
+
+        # 超过最大重试次数，抛出最后一次异常
+        raise RuntimeError(
+            f"AI打分在 {settings.LLM_MAX_RETRIES} 次重试后仍失败：{last_error}"
+        )
+
+    # ── 构建打分 Prompt（按照任务书要求） ────────────────
+    def _build_scoring_prompt(
+        self,
+        resume_text: str,
+        job_title: str,
+        job_requirements: str,
+        required_education: str,
+        required_experience_years: int,
+        required_skills: list[str],
+    ) -> str:
+        edu_map = {
+            "any": "不限",
+            "junior_college": "大专",
+            "bachelor": "本科",
+            "master": "硕士",
+            "phd": "博士",
+        }
+        edu_label = edu_map.get(required_education, required_education)
+        skills_str = "、".join(required_skills) if required_skills else "无特殊要求"
+
+        # 简历截断，避免超出 context
+        resume_truncated = resume_text[:4000] if len(resume_text) > 4000 else resume_text
+
+        return f"""请对以下候选人简历进行评分。
+
+## 岗位信息
+- 岗位名称：{job_title}
+- 学历要求：{edu_label}
+- 工作年限要求：{required_experience_years}年以上
+- 技能要求：{skills_str}
+- 岗位要求详情：
+{job_requirements}
+
+## 候选人简历
+{resume_truncated}
+
+## 评分标准（总分100分）
+
+| 维度 | 满分 | 说明 |
+|------|------|------|
+| skills（技能匹配） | 25分 | 候选人掌握的技术技能、专业技能与岗位要求的匹配度 |
+| experience（经验匹配） | 25分 | 工作年限、项目经验、行业经验与岗位要求的契合度 |
+| education（学历匹配） | 20分 | 候选人学历层次与岗位学历要求的匹配程度 |
+| potential（发展潜力） | 15分 | 候选人的学习能力、成长轨迹、未来发展空间 |
+| stability（稳定性） | 15分 | 工作稳定性，跳槽频率，平均在职时长，离职原因合理性 |
+
+## 输出要求
+只输出以下JSON格式，不要有任何其他文字：
+
+{{
+  "skills": <0-25的数字>,
+  "experience": <0-25的数字>,
+  "education": <0-20的数字>,
+  "potential": <0-15的数字>,
+  "stability": <0-15的数字>,
+  "total": <以上5项之和>,
+  "summary": "<100字以内的中文总结评语>",
+  "strengths": ["优势1", "优势2", "优势3"],
+  "weaknesses": ["不足1", "不足2"]
+}}"""
+
+    # ── 解析模型返回的 JSON 为 ScoreResult ────────────────
+    def _parse_score_result(self, data: dict) -> ScoreResult:
+        def clamp(val, max_val):
+            """限制分数在合法范围内"""
+            try:
+                return max(0.0, min(float(val), float(max_val)))
+            except (TypeError, ValueError):
+                return 0.0
+
+        skills     = clamp(data.get("skills", 0), 25)
+        experience = clamp(data.get("experience", 0), 25)
+        education  = clamp(data.get("education", 0), 20)
+        potential  = clamp(data.get("potential", 0), 15)
+        stability  = clamp(data.get("stability", 0), 15)
+
+        # total 重新计算，不信任模型的求和
+        total = skills + experience + education + potential + stability
+
+        strengths  = data.get("strengths", [])
+        weaknesses = data.get("weaknesses", [])
+
+        # 确保是列表
+        if not isinstance(strengths, list):
+            strengths = [str(strengths)]
+        if not isinstance(weaknesses, list):
+            weaknesses = [str(weaknesses)]
+
+        return ScoreResult(
+            skills=skills,
+            experience=experience,
+            education=education,
+            potential=potential,
+            stability=stability,
+            total=round(total, 1),
+            summary=str(data.get("summary", ""))[:500],
+            strengths=strengths[:5],    # 最多5条
+            weaknesses=weaknesses[:5],  # 最多5条
+        )
+
+
+# 单例
+ai_service = AIService()
+````
+
+---
+
+## 第三步：修正 `backend/app/api/routes/applications.py` 的字段赋值
+
+```python
+# 在 _trigger_ai_scoring 函数中，修改这部分：
+
+score = await ai_service.score_resume(...)
+
+# 修正字段赋值
+application.score_skills = score.skills
+application.score_experience = score.experience
+application.score_education = score.education
+application.score_potential = score.potential
+application.score_stability = score.stability
+application.ai_total_score = score.total
+application.ai_summary = score.summary
+application.ai_strengths = json.dumps(score.strengths, ensure_ascii=False)
+application.ai_weaknesses = json.dumps(score.weaknesses, ensure_ascii=False)
+application.status = ApplicationStatus.ai_scored
+```
+
+---
+
+## 第四步：修正 `backend/app/schemas/application.py`
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.models.application import ApplicationStatus
+
+
+class ApplicationCreate(BaseModel):
+    job_id: int
+    resume_id: int
+    cover_letter: Optional[str] = None
+
+
+class ApplicationStatusUpdate(BaseModel):
+    new_status: ApplicationStatus
+    notes: Optional[str] = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_id: int
+    candidate_id: int
+    resume_id: int
+    status: ApplicationStatus
+
+    # AI 5维度分数（修正后的字段名）
+    score_skills: Optional[float] = None
+    score_experience: Optional[float] = None
+    score_education: Optional[float] = None
+    score_potential: Optional[float] = None
+    score_stability: Optional[float] = None
+    ai_total_score: Optional[float] = None
+    ai_summary: Optional[str] = None
+    ai_strengths: Optional[str] = None
+    ai_weaknesses: Optional[str] = None
+    scoring_error: Optional[str] = None
+
+    # 人工记录
+    hr_notes: Optional[str] = None
+    dept_notes: Optional[str] = None
+    cover_letter: Optional[str] = None
+    interview_date: Optional[datetime] = None
+
+    applied_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+```
+
+---
+
+## 第五步：修正前端 `frontend/src/types/index.ts`
+
+```typescript
+export interface Application {
+  id: number
+  job_id: number
+  candidate_id: number
+  resume_id: number
+  status: ApplicationStatus
+
+  // AI 5维度分数（修正后的字段名）
+  score_skills?: number         // 满分 25
+  score_experience?: number     // 满分 25
+  score_education?: number      // 满分 20
+  score_potential?: number      // 满分 15
+  score_stability?: number      // 满分 15
+  ai_total_score?: number
+  ai_summary?: string
+  ai_strengths?: string
+  ai_weaknesses?: string
+  scoring_error?: string
+
+  // 人工记录
+  hr_notes?: string
+  dept_notes?: string
+  cover_letter?: string
+  interview_date?: string
+
+  applied_at: string
+  updated_at: string
+}
+```
+
+---
+
+## 第六步：修正前端 `frontend/src/pages/ApplicationDetail.tsx` 的雷达图
+
+```typescript
+// AI 5维度雷达图数据（修正后的字段名）
+const radarData = [
+  { subject: '技能匹配', value: app.score_skills ?? 0, full: 25 },
+  { subject: '经验匹配', value: app.score_experience ?? 0, full: 25 },
+  { subject: '学历匹配', value: app.score_education ?? 0, full: 20 },
+  { subject: '发展潜力', value: app.score_potential ?? 0, full: 15 },
+  { subject: '稳定性',   value: app.score_stability ?? 0, full: 15 },
+].map((d) => ({ ...d, pct: (d.value / d.full) * 100 }))
+```
+
+---
+
+## 第七步：修正前端 `frontend/src/pages/Dashboard.tsx` 的雷达图
+
+```typescript
+// AI 打分分布（已打分的）
+const scoredApps = applications.filter((a) => a.ai_total_score != null)
+const avgScores = scoredApps.length > 0 ? {
+  skills: scoredApps.reduce((s, a) => s + (a.score_skills ?? 0), 0) / scoredApps.length,
+  experience: scoredApps.reduce((s, a) => s + (a.score_experience ?? 0), 0) / scoredApps.length,
+  education: scoredApps.reduce((s, a) => s + (a.score_education ?? 0), 0) / scoredApps.length,
+  potential: scoredApps.reduce((s, a) => s + (a.score_potential ?? 0), 0) / scoredApps.length,
+  stability: scoredApps.reduce((s, a) => s + (a.score_stability ?? 0), 0) / scoredApps.length,
+} : null
+
+const radarData = avgScores ? [
+  { subject: '技能匹配', value: (avgScores.skills / 25) * 100 },
+  { subject: '经验匹配', value: (avgScores.experience / 25) * 100 },
+  { subject: '学历匹配', value: (avgScores.education / 20) * 100 },
+  { subject: '发展潜力', value: (avgScores.potential / 15) * 100 },
+  { subject: '稳定性',   value: (avgScores.stability / 15) * 100 },
+] : []
+```
+
+---
+
+## 第八步：修正测试脚本 `backend/test_ai.py`
+
+```python
+"""
+快速测试 AI 打分是否正常工作
+运行方式：cd backend && python test_ai.py
+"""
+import asyncio
+from app.services.ai_service import ai_service
+
+
+async def main():
+    resume_text = """
+    姓名：张三
+    学历：本科，计算机科学与技术，2018年毕业
+    工作经历：
+    2018-2020  XX科技有限公司  后端开发工程师
+      - 负责用户服务模块开发，使用Python + FastAPI
+      - 参与数据库设计，熟练使用PostgreSQL
+    2020-2024  YY互联网公司  高级后端工程师
+      - 独立负责订单系统重构，QPS从500提升至5000
+      - 熟练使用Docker、Kubernetes进行服务部署
+      - 熟悉Redis缓存、消息队列RabbitMQ
+    技能：Python、FastAPI、PostgreSQL、Redis、Docker、Linux
+    """
+
+    result = await ai_service.score_resume(
+        resume_text=resume_text,
+        job_title="高级后端工程师",
+        job_requirements="负责核心业务系统开发，需要有高并发系统经验",
+        required_education="bachelor",
+        required_experience_years=3,
+        required_skills=["Python", "FastAPI", "PostgreSQL", "Docker"],
+    )
+
+    print(f"技能匹配：{result.skills} / 25")
+    print(f"经验匹配：{result.experience} / 25")
+    print(f"学历匹配：{result.education} / 20")
+    print(f"发展潜力：{result.potential} / 15")
+    print(f"稳定性：  {result.stability} / 15")
+    print(f"总分：    {result.total} / 100")
+    print(f"总结：    {result.summary}")
+    print(f"优势：    {result.strengths}")
+    print(f"不足：    {result.weaknesses}")
+
+
+asyncio.run(main())
+```
+
+---
+
+**全部修正完毕 ✅，现在完全符合任务书要求的5维度了！**
+
+本地 agent 依次执行：
+
+```bash
+# 1. 替换所有修正后的文件
+# 2. 删除旧数据库（字段变了）
+rm -rf backend/uploads/*
+# 3. 重启后端
+cd backend
+python test_ai.py  # 先测试AI打分
+uvicorn app.main:app --reload
+```
+
+有报错截图给我 🔧
