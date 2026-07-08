@@ -45,3 +45,4 @@ SKILL.md
 _check_*.py
 backend/tests/test_ai_service.py
 backend/tests/test_routes.py
+*.png  
