@@ -33,3 +33,15 @@ frontend/dist/
 # 临时文件
 *.log
 _backup/
+
+# 开发文档（不提交）
+代码书*.txt
+代码评估*.md
+任务书.txt
+优化.txt
+冲刺*.md
+剩余优化清单.md
+SKILL.md
+_check_*.py
+backend/tests/test_ai_service.py
+backend/tests/test_routes.py
