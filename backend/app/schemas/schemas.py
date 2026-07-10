@@ -137,6 +137,11 @@ class ApplicationOut(BaseModel):
     resume_id: int
     department: Optional[str]
     status: ApplicationStatus
+    score_skills: Optional[float] = None
+    score_experience: Optional[float] = None
+    score_education: Optional[float] = None
+    score_potential: Optional[float] = None
+    score_stability: Optional[float] = None
     ai_total_score: Optional[float]
     ai_recommendation: Optional[str]
     ai_summary: Optional[str]

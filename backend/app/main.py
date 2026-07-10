@@ -54,3 +54,4 @@ async def health():
 # ── 静态文件（兜底，放最后）────────────────────────────
 if os.path.isdir(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+  

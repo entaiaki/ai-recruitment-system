@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - 候选人管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style> body { width: 100vw; height: 100vh; overflow: hidden; } .content-wrapper { height: calc(100vh - 8rem); overflow-y: auto; } .tab-active { border-bottom: 2px solid #3B82F6; color: #3B82F6; } .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; align-items: center; justify-content: center; } .modal-overlay.active { display: flex; } .modal-box { background: white; border-radius: 0.5rem; padding: 1.5rem; width: 480px; max-height: 90vh; overflow-y: auto; }</style>
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center"><span class="text-xl font-bold text-blue-600">AlgoTalent</span></div>
+        <div class="flex items-center space-x-6">
+          <span id="userInfo" class="text-sm text-gray-500"></span>
+          <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">退出</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8 pt-4 pb-2">
+        <a href="job-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-briefcase mr-2"></i> 岗位管理</a>
+        <a href="candidates.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-users mr-2"></i> 候选人</a>
+        <a href="applications.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-file-text mr-2"></i> 投递管理</a>
+        <a href="data-analysis.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-bar-chart mr-2"></i> 数据分析</a>
+        <a href="index.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-list-alt mr-2"></i> 审计日志</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content-wrapper max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="flex border-b mb-6">
+      <button class="tab-active px-4 py-2 text-sm font-medium" onclick="switchTab('candidates')">候选人列表</button>
+      <button class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900" onclick="switchTab('upload')">上传简历</button>
+    </div>
+
+    <!-- Candidates Tab -->
+    <div id="tabCandidates">
+      <div class="mb-4 flex gap-3">
+        <input id="candidateSearch" type="text" placeholder="搜索姓名/邮箱/电话..." class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" oninput="loadCandidates()">
+        <button id="btnNewCandidate" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">+ 新建候选人</button>
+      </div>
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 border-b"><tr><th class="px-4 py-3 text-left font-medium text-gray-500">ID</th><th class="px-4 py-3 text-left font-medium text-gray-500">姓名</th><th class="px-4 py-3 text-left font-medium text-gray-500">邮箱</th><th class="px-4 py-3 text-left font-medium text-gray-500">电话</th><th class="px-4 py-3 text-left font-medium text-gray-500">来源</th><th class="px-4 py-3 text-left font-medium text-gray-500">创建时间</th></tr></thead>
+          <tbody id="candidateTable" class="divide-y divide-gray-100"></tbody>
+        </table>
+        <div id="candidateEmpty" class="text-center py-12 text-gray-400 hidden">暂无候选人</div>
+      </div>
+    </div>
+
+    <!-- Upload Tab -->
+    <div id="tabUpload" class="hidden">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-lg">
+        <h2 class="text-lg font-semibold mb-4">上传简历</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">候选人</label>
+            <select id="uploadCandidateId" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"><option value="">选择已有候选人或建新的</option></select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">简历文件 (PDF/DOCX, ≤10MB)</label>
+            <input type="file" id="uploadFile" accept=".pdf,.docx" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+          </div>
+          <button id="btnUpload" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 w-full">上传解析</button>
+          <div id="uploadStatus" class="text-sm mt-2"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- New Candidate Modal -->
+  <div id="candidateModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">新建候选人</h3><button onclick="closeModal('candidateModal')" class="text-gray-400 hover:text-gray-600">&times;</button></div>
+      <div class="space-y-3">
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">姓名 *</label><input id="candName" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label><input id="candEmail" type="email" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">电话</label><input id="candPhone" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"></div>
+        <button onclick="createCandidate()" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 w-full mt-2">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    function switchTab(t) {
+      document.getElementById('tabCandidates').classList.toggle('hidden', t !== 'candidates');
+      document.getElementById('tabUpload').classList.toggle('hidden', t !== 'upload');
+      var btns = document.querySelectorAll('.tab-active');
+      btns.forEach(function(b){ b.classList.remove('tab-active'); b.classList.add('text-gray-500'); });
+      if (t==='candidates'){ document.querySelector('nav button:first-child').classList.add('tab-active'); }
+      else { document.querySelectorAll('nav button')[1].classList.add('tab-active'); }
+      if (t==='upload') loadCandidatesForSelect();
+    }
+
+    async function loadCandidates() {
+      var q = document.getElementById('candidateSearch').value || '';
+      try {
+        var data = await API.get('/api/candidates');
+        if (q) data = data.filter(function(c){
+          return (c.name||'').toLowerCase().includes(q.toLowerCase()) ||
+                 (c.email||'').toLowerCase().includes(q.toLowerCase()) ||
+                 (c.phone||'').toLowerCase().includes(q.toLowerCase());
+        });
+        var tbody = document.getElementById('candidateTable');
+        var empty = document.getElementById('candidateEmpty');
+        if (!data.length) { tbody.innerHTML=''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        tbody.innerHTML = data.map(function(c){
+          return '<tr class="hover:bg-gray-50"><td class="px-4 py-3">'+c.id+'</td><td class="px-4 py-3 font-medium">'+esc(c.name)+'</td><td class="px-4 py-3">'+esc(c.email)+'</td><td class="px-4 py-3">'+esc(c.phone)+'</td><td class="px-4 py-3">'+esc(c.source)+'</td><td class="px-4 py-3 text-gray-400">'+c.created_at.slice(0,10)+'</td></tr>';
+        }).join('');
+      } catch(e) { console.error(e); }
+    }
+
+    async function loadCandidatesForSelect() {
+      try {
+        var data = await API.get('/api/candidates');
+        var sel = document.getElementById('uploadCandidateId');
+        sel.innerHTML = '<option value="">选择已有候选人或建新的</option>' + data.map(function(c){
+          return '<option value="'+c.id+'">'+esc(c.name)+' ('+esc(c.email||c.phone||'')+')</option>';
+        }).join('');
+      } catch(e){}
+    }
+
+    async function createCandidate() {
+      var name = document.getElementById('candName').value.trim();
+      if (!name) return alert('姓名必填');
+      try {
+        await API.post('/api/candidates', { name: name, email: document.getElementById('candEmail').value.trim()||null, phone: document.getElementById('candPhone').value.trim()||null });
+        closeModal('candidateModal');
+        document.getElementById('candName').value=''; document.getElementById('candEmail').value=''; document.getElementById('candPhone').value='';
+        loadCandidates();
+      } catch(e) { alert('创建失败: '+(e.message||'')); }
+    }
+
+    async function uploadResume() {
+      var cid = document.getElementById('uploadCandidateId').value;
+      var file = document.getElementById('uploadFile').files[0];
+      if (!file) return alert('请选择文件');
+      var fd = new FormData();
+      fd.append('file', file);
+      if (cid) fd.append('candidate_id', cid);
+      document.getElementById('btnUpload').disabled = true;
+      document.getElementById('uploadStatus').innerHTML = '<span class="text-blue-600">上传解析中...</span>';
+      try {
+        var r = await API.upload('/api/resumes/upload', fd);
+        document.getElementById('uploadStatus').innerHTML = '<span class="text-green-600">✓ 上传成功 (ID:'+r.id+')</span>';
+        document.getElementById('uploadFile').value='';
+      } catch(e) {
+        document.getElementById('uploadStatus').innerHTML = '<span class="text-red-600">✗ '+(e.message||'上传失败')+'</span>';
+      }
+      document.getElementById('btnUpload').disabled = false;
+    }
+
+    function esc(s){ return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      loadCandidates();
+      document.getElementById('btnNewCandidate').addEventListener('click',function(){ document.getElementById('candidateModal').classList.add('active'); });
+      document.getElementById('btnUpload').addEventListener('click', uploadResume);
+    });
+  </script>
+</body>
+</html>

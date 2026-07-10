@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - 投递管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style> body { width: 100vw; height: 100vh; overflow: hidden; } .content-wrapper { height: calc(100vh - 8rem); overflow-y: auto; } .tab-active { border-bottom: 2px solid #3B82F6; color: #3B82F6; } .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; align-items: center; justify-content: center; } .modal-overlay.active { display: flex; } .modal-box { background: white; border-radius: 0.5rem; padding: 1.5rem; width: 640px; max-height: 90vh; overflow-y: auto; } .score-bar { height: 8px; border-radius: 4px; background: #E5E7EB; overflow: hidden; } .score-bar-fill { height: 100%; border-radius: 4px; } .status-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; } </style>
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center"><span class="text-xl font-bold text-blue-600">AlgoTalent</span></div>
+        <div class="flex items-center space-x-6">
+          <span id="userInfo" class="text-sm text-gray-500"></span>
+          <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">退出</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8 pt-4 pb-2">
+        <a href="job-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-briefcase mr-2"></i> 岗位管理</a>
+        <a href="candidates.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-users mr-2"></i> 候选人</a>
+        <a href="applications.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-file-text mr-2"></i> 投递管理</a>
+        <a href="data-analysis.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-bar-chart mr-2"></i> 数据分析</a>
+        <a href="index.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center"><i class="fa fa-list-alt mr-2"></i> 审计日志</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content-wrapper max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-4 items-center">
+      <select id="filterJob" class="border border-gray-300 rounded-md px-3 py-2 text-sm" onchange="loadApps()">
+        <option value="">全部岗位</option>
+      </select>
+      <select id="filterStatus" class="border border-gray-300 rounded-md px-3 py-2 text-sm" onchange="loadApps()">
+        <option value="">全部状态</option>
+        <option value="submitted">submitted</option>
+        <option value="ai_scoring">ai_scoring</option>
+        <option value="ai_scored">ai_scored</option>
+        <option value="hr_review">hr_review</option>
+        <option value="dept_review">dept_review</option>
+        <option value="interview">interview</option>
+        <option value="offered">offered</option>
+        <option value="hired">hired</option>
+        <option value="rejected">rejected</option>
+      </select>
+      <input id="filterMinScore" type="number" placeholder="最低分 (0-100)" class="border border-gray-300 rounded-md px-3 py-2 text-sm w-32" onchange="loadApps()" min="0" max="100">
+      <button onclick="openNewAppModal()" class="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700 ml-auto">+ 新建投递</button>
+    </div>
+
+    <!-- App List -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 border-b">
+          <tr>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">ID</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">候选人</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">岗位</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">状态</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">AI 总分</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">时间</th>
+            <th class="px-3 py-3 text-left font-medium text-gray-500">操作</th>
+          </tr>
+        </thead>
+        <tbody id="appTable" class="divide-y divide-gray-100"></tbody>
+      </table>
+      <div id="appEmpty" class="text-center py-12 text-gray-400 hidden">暂无投递记录</div>
+    </div>
+  </main>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">投递详情 #<span id="detailId"></span></h3><button onclick="closeModal('detailModal')" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button></div>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-2 text-sm"><div><span class="text-gray-500">候选人:</span> <span id="detailCand" class="font-medium"></span></div><div><span class="text-gray-500">岗位:</span> <span id="detailJob" class="font-medium"></span></div></div>
+        <div><span class="text-gray-500 text-sm">当前状态:</span> <span id="detailStatus" class="status-badge ml-1"></span></div>
+
+        <!-- AI Score -->
+        <div id="detailScoreSection" class="hidden border-t pt-3 mt-3">
+          <h4 class="text-sm font-semibold mb-2">AI 五维评分 <span id="detailTotal" class="text-blue-600"></span></h4>
+          <div id="detailDimensions" class="space-y-2"></div>
+          <div class="mt-2 text-sm"><span class="text-gray-500">建议:</span> <span id="detailRec"></span></div>
+          <div class="mt-1 text-sm"><span class="text-gray-500">总结:</span> <span id="detailSummary"></span></div>
+          <div class="grid grid-cols-2 gap-2 mt-2 text-xs">
+            <div class="bg-green-50 rounded p-2"><div class="font-medium text-green-700">优势</div><div id="detailStrengths"></div></div>
+            <div class="bg-red-50 rounded p-2"><div class="font-medium text-red-700">劣势</div><div id="detailWeaknesses"></div></div>
+          </div>
+        </div>
+        <div id="detailScoreError" class="hidden text-red-500 text-sm mt-2"></div>
+
+        <!-- Transition -->
+        <div class="border-t pt-3 mt-3">
+          <h4 class="text-sm font-semibold mb-2">状态流转</h4>
+          <div class="flex gap-2 flex-wrap" id="detailTransitions"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Application Modal -->
+  <div id="newAppModal" class="modal-overlay">
+    <div class="modal-box" style="width:520px">
+      <div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">新建投递</h3><button onclick="closeModal('newAppModal')" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button></div>
+      <div class="space-y-3">
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">候选人 *</label><select id="newCand" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"><option value="">选择候选人</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">岗位 *</label><select id="newJob" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"><option value="">选择岗位</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">简历 *</label><select id="newResume" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"><option value="">选择简历</option></select></div>
+        <button onclick="submitApplication()" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 w-full mt-2">提交投递 (触发 AI 评分)</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    var STATUS_LABELS = { submitted:'已提交', ai_scoring:'AI 评分中', scoring_failed:'评分失败', ai_scored:'已评分', hr_review:'HR 审核', dept_review:'部门审核', interview:'面试中', offered:'已发Offer', hired:'已入职', rejected:'已拒绝' };
+    var STATUS_COLORS = { submitted:'bg-gray-200 text-gray-700', ai_scoring:'bg-yellow-100 text-yellow-700', scoring_failed:'bg-red-100 text-red-700', ai_scored:'bg-blue-100 text-blue-700', hr_review:'bg-purple-100 text-purple-700', dept_review:'bg-indigo-100 text-indigo-700', interview:'bg-orange-100 text-orange-700', offered:'bg-green-100 text-green-700', hired:'bg-green-500 text-white', rejected:'bg-red-200 text-red-800' };
+    var DIM_META = [
+      { key:'score_skills', label:'技能匹配', max:25, color:'#3B82F6' },
+      { key:'score_experience', label:'经验匹配', max:25, color:'#F59E0B' },
+      { key:'score_education', label:'教育匹配', max:20, color:'#10B981' },
+      { key:'score_potential', label:'发展潜力', max:15, color:'#8B5CF6' },
+      { key:'score_stability', label:'稳定性', max:15, color:'#EC4899' }
+    ];
+    var allJobs = [], allCandidates = [], currentApp = null;
+
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function statusBadge(s) {
+      return '<span class="status-badge '+(STATUS_COLORS[s]||'bg-gray-200')+'">'+(STATUS_LABELS[s]||s)+'</span>';
+    }
+
+    async function loadApps() {
+      var params = [];
+      var j = document.getElementById('filterJob').value;
+      var s = document.getElementById('filterStatus').value;
+      var m = document.getElementById('filterMinScore').value;
+      if (j) params.push('job_id='+j);
+      if (s) params.push('status='+s);
+      if (m) params.push('min_score='+m);
+      var qs = params.length ? '?'+params.join('&') : '';
+      try {
+        var data = await API.get('/api/applications'+qs);
+        var tbody = document.getElementById('appTable');
+        var empty = document.getElementById('appEmpty');
+        if (!data.length) { tbody.innerHTML=''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        tbody.innerHTML = data.map(function(a){
+          var score = a.ai_total_score != null ? a.ai_total_score.toFixed(1) : '—';
+          var scoreColor = a.ai_total_score >= 80 ? 'text-green-600' : a.ai_total_score >= 60 ? 'text-yellow-600' : 'text-red-600';
+          return '<tr class="hover:bg-gray-50 cursor-pointer" onclick="openDetail('+a.id+')">'+
+            '<td class="px-3 py-3">'+a.id+'</td>'+
+            '<td class="px-3 py-3 font-medium">#'+a.candidate_id+'</td>'+
+            '<td class="px-3 py-3">#'+a.job_id+'</td>'+
+            '<td class="px-3 py-3">'+statusBadge(a.status)+'</td>'+
+            '<td class="px-3 py-3 font-bold '+scoreColor+'">'+score+'</td>'+
+            '<td class="px-3 py-3 text-gray-400">'+a.applied_at.slice(0,16)+'</td>'+
+            '<td class="px-3 py-3"><button class="text-blue-600 hover:text-blue-800 text-xs" onclick="event.stopPropagation(); openDetail('+a.id+')">查看/流转</button></td>'+
+            '</tr>';
+        }).join('');
+      } catch(e) { console.error(e); }
+    }
+
+    async function openDetail(id) {
+      try {
+        currentApp = await API.get('/api/applications/'+id);
+        document.getElementById('detailId').textContent = currentApp.id;
+        document.getElementById('detailCand').textContent = '#' + currentApp.candidate_id;
+        document.getElementById('detailJob').textContent = '#' + currentApp.job_id;
+        document.getElementById('detailStatus').className = 'status-badge '+(STATUS_COLORS[currentApp.status]||'bg-gray-200');
+        document.getElementById('detailStatus').textContent = STATUS_LABELS[currentApp.status]||currentApp.status;
+
+        // Score section
+        var hasScore = currentApp.ai_total_score != null && currentApp.ai_total_score >= 0;
+        document.getElementById('detailScoreSection').classList.toggle('hidden', !hasScore);
+        document.getElementById('detailScoreError').classList.toggle('hidden', !currentApp.scoring_error);
+        document.getElementById('detailScoreError').textContent = currentApp.scoring_error || '';
+
+        if (hasScore) {
+          document.getElementById('detailTotal').textContent = '总分: ' + currentApp.ai_total_score.toFixed(1) + '/100';
+          document.getElementById('detailRec').textContent = currentApp.ai_recommendation || '—';
+          document.getElementById('detailSummary').textContent = currentApp.ai_summary || '—';
+          var dimsHtml = '';
+          DIM_META.forEach(function(d){
+            var v = currentApp[d.key] || 0;
+            var pct = (v/d.max*100).toFixed(0);
+            dimsHtml += '<div><div class="flex justify-between text-xs mb-1"><span>'+d.label+'</span><span class="font-medium">'+v.toFixed(1)+'/'+d.max+'</span></div><div class="score-bar"><div class="score-bar-fill" style="width:'+pct+'%;background:'+d.color+'"></div></div></div>';
+          });
+          document.getElementById('detailDimensions').innerHTML = dimsHtml;
+
+          var strengths = currentApp.ai_strengths;
+          try { strengths = JSON.parse(strengths); } catch(e){}
+          document.getElementById('detailStrengths').textContent = Array.isArray(strengths) ? strengths.join('; ') : (strengths || '—');
+
+          var weaknesses = currentApp.ai_weaknesses;
+          try { weaknesses = JSON.parse(weaknesses); } catch(e){}
+          document.getElementById('detailWeaknesses').textContent = Array.isArray(weaknesses) ? weaknesses.join('; ') : (weaknesses || '—');
+        }
+
+        // Transitions
+        var transitions = getValidTransitions(currentApp.status);
+        var transHtml = '';
+        transitions.forEach(function(t){
+          transHtml += '<button onclick="doTransition(\''+t+'\')" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100">→ '+STATUS_LABELS[t]+'</button>';
+        });
+        document.getElementById('detailTransitions').innerHTML = transHtml || '<span class="text-gray-400 text-sm">无可用流转</span>';
+
+        document.getElementById('detailModal').classList.add('active');
+      } catch(e) { alert('加载失败: '+(e.message||'')); }
+    }
+
+    function getValidTransitions(status) {
+      var map = {
+        submitted: ['ai_scoring'],
+        ai_scoring: ['ai_scored','scoring_failed'],
+        scoring_failed: ['ai_scoring'],
+        ai_scored: ['hr_review','rejected'],
+        hr_review: ['dept_review','rejected'],
+        dept_review: ['interview','rejected'],
+        interview: ['offered','rejected'],
+        offered: ['hired','rejected'],
+        hired: [], rejected: []
+      };
+      return map[status] || [];
+    }
+
+    async function doTransition(newStatus) {
+      var notes = prompt('备注 (拒绝必须填):');
+      if (newStatus==='rejected' && !notes) return alert('拒绝必须填写原因');
+      try {
+        await API.patch('/api/applications/'+currentApp.id+'/status', { new_status: newStatus, notes: notes||null });
+        closeModal('detailModal');
+        loadApps();
+      } catch(e) { alert('流转失败: '+(e.message||'')); }
+    }
+
+    async function openNewAppModal() {
+      try {
+        var [jobs, cands] = await Promise.all([API.get('/api/jobs'), API.get('/api/candidates')]);
+        allJobs = jobs; allCandidates = cands;
+        document.getElementById('newJob').innerHTML = '<option value="">选择岗位</option>'+jobs.map(function(j){ return '<option value="'+j.id+'">'+esc(j.title)+' ('+j.department+')</option>'; }).join('');
+        document.getElementById('newCand').innerHTML = '<option value="">选择候选人</option>'+cands.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+' ('+esc(c.email||c.phone)+')</option>'; }).join('');
+        document.getElementById('newResume').innerHTML = '<option value="">先选候选人</option>';
+        document.getElementById('newAppModal').classList.add('active');
+      } catch(e) { alert('加载失败'); }
+    }
+
+    async function loadResumes(cid) {
+      if (!cid) { document.getElementById('newResume').innerHTML = '<option value="">先选候选人</option>'; return; }
+      try {
+        var data = await API.get('/api/resumes?candidate_id='+cid);
+        if (!data.length) { document.getElementById('newResume').innerHTML = '<option value="">该候选人暂无简历，请先上传</option>'; return; }
+        document.getElementById('newResume').innerHTML = '<option value="">选择简历</option>' + data.map(function(r){
+          return '<option value="'+r.id+'">'+esc(r.original_filename)+' (ID:'+r.id+', '+r.parse_status+')</option>';
+        }).join('');
+      } catch(e) {
+        document.getElementById('newResume').innerHTML = '<option value="">加载失败</option>';
+      }
+    }
+
+    async function submitApplication() {
+      var cid = document.getElementById('newCand').value;
+      var jid = document.getElementById('newJob').value;
+      var rid = document.getElementById('newResume').value;
+      if (!cid||!jid||!rid) return alert('所有字段必填');
+      try {
+        await API.post('/api/applications', { job_id: parseInt(jid), candidate_id: parseInt(cid), resume_id: parseInt(rid) });
+        closeModal('newAppModal');
+        loadApps();
+      } catch(e) { alert('提交失败: '+(e.message||'')); }
+    }
+
+    function esc(s){ return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      // Load jobs for filter
+      API.get('/api/jobs').then(function(jobs){
+        document.getElementById('filterJob').innerHTML = '<option value="">全部岗位</option>'+jobs.map(function(j){ return '<option value="'+j.id+'">'+esc(j.title)+'</option>'; }).join('');
+      });
+      loadApps();
+      document.getElementById('newCand').addEventListener('change', function(){ loadResumes(this.value); });
+    });
+  </script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -10,9 +11,24 @@ from app.api.deps import require_hr_or_above
 from app.models.user import User
 from app.models.resume import Resume
 from app.schemas.schemas import ResumeOut
+from app.core.security import get_current_active_user
 from app.utils.file_parser import parse_resume
 
 router = APIRouter(prefix="/api/resumes", tags=["简历"])
+
+
+@router.get("/", response_model=list[ResumeOut])
+async def list_resumes(
+    candidate_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_active_user),
+):
+    query = select(Resume)
+    if candidate_id:
+        query = query.where(Resume.candidate_id == candidate_id)
+    query = query.order_by(Resume.created_at.desc())
+    result = await db.execute(query)
+    return [ResumeOut.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/upload", response_model=ResumeOut, status_code=201)

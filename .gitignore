@@ -46,4 +46,5 @@ _check_*.py
 _test_*.py
 backend/tests/test_ai_service.py
 backend/tests/test_routes.py
+backend/restart.bat
 *.png  
