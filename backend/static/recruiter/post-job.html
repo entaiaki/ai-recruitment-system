@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - Post New Job</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <img src="../image/logo.png" alt="Logo" class="w-10 h-10 object-cover rounded-full">
+          <span class="text-xl font-bold text-blue-600 ml-2">AlgoTalent</span>
+        </div>
+        <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-wrap space-x-6 pt-4 pb-2">
+        <a href="../job-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-briefcase mr-1"></i> Jobs</a>
+        <a href="../candidates.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-users mr-1"></i> Candidates</a>
+        <a href="../applications.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-file-text mr-1"></i> Applications</a>
+        <a href="dashboard-recruiter.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-tachometer mr-1"></i> Dashboard</a>
+        <a href="post-job.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium"><i class="fa fa-plus-circle mr-1"></i> Post Job</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-grow flex items-center justify-center py-8">
+    <div class="w-full max-w-lg bg-white p-8 rounded-lg shadow-lg">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4">Post New Job</h2>
+      <form id="postJobForm" class="space-y-4">
+        <div><label class="block text-gray-700 text-sm mb-1">Job Title *</label><input id="title" type="text" class="w-full px-3 py-2 border rounded-md" placeholder="e.g. Senior Software Engineer" required></div>
+        <div><label class="block text-gray-700 text-sm mb-1">Department *</label><input id="department" type="text" class="w-full px-3 py-2 border rounded-md" placeholder="e.g. Engineering" required></div>
+        <div><label class="block text-gray-700 text-sm mb-1">Location</label><input id="location" type="text" class="w-full px-3 py-2 border rounded-md" placeholder="e.g. Shanghai"></div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="block text-gray-700 text-sm mb-1">Salary Min</label><input id="salary_min" type="number" class="w-full px-3 py-2 border rounded-md"></div>
+          <div><label class="block text-gray-700 text-sm mb-1">Salary Max</label><input id="salary_max" type="number" class="w-full px-3 py-2 border rounded-md"></div>
+        </div>
+        <div><label class="block text-gray-700 text-sm mb-1">Education</label>
+          <select id="required_education" class="w-full px-3 py-2 border rounded-md">
+            <option value="any">Any</option><option value="bachelor">Bachelor</option><option value="master">Master</option><option value="phd">PhD</option>
+          </select>
+        </div>
+        <div><label class="block text-gray-700 text-sm mb-1">Experience (years)</label><input id="required_experience_years" type="number" class="w-full px-3 py-2 border rounded-md"></div>
+        <div><label class="block text-gray-700 text-sm mb-1">Required Skills (comma separated)</label><textarea id="required_skills" class="w-full px-3 py-2 border rounded-md" rows="2" placeholder="Python, FastAPI, React"></textarea></div>
+        <div><label class="block text-gray-700 text-sm mb-1">Job Description *</label><textarea id="jd_body" class="w-full px-3 py-2 border rounded-md" rows="5" placeholder="Describe the role, responsibilities, and requirements..." required></textarea></div>
+        <div id="postMsg" class="text-sm text-center"></div>
+        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition font-semibold">Post Job</button>
+      </form>
+    </div>
+  </main>
+
+  <script src="../api.js"></script>
+  <script src="../auth.js"></script>
+  <script>
+    document.getElementById('postJobForm').addEventListener('submit', async function(e){
+      e.preventDefault();
+      var skills = document.getElementById('required_skills').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      var data = {
+        title: document.getElementById('title').value,
+        department: document.getElementById('department').value,
+        location: document.getElementById('location').value || null,
+        salary_min: parseInt(document.getElementById('salary_min').value) || null,
+        salary_max: parseInt(document.getElementById('salary_max').value) || null,
+        required_education: document.getElementById('required_education').value,
+        required_experience_years: parseInt(document.getElementById('required_experience_years').value) || null,
+        required_skills: skills,
+        jd_body: document.getElementById('jd_body').value
+      };
+      try {
+        var r = await API.post('/api/jobs', data);
+        document.getElementById('postMsg').innerHTML = '<span class="text-green-600">Job posted successfully!</span>';
+        this.reset();
+        setTimeout(function(){ window.location.href = 'dashboard-recruiter.html'; }, 1000);
+      } catch(err) {
+        document.getElementById('postMsg').innerHTML = '<span class="text-red-600">Error: ' + (err.message || '') + '</span>';
+      }
+    });
+  </script>
+</body>
+</html>

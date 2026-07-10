@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Management – TalentFlow</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <div id="header"></div>
+
+    <!-- 页面跳转按钮 -->
+    <div class="flex space-x-3 ml-6">
+        <a href="dashboard-jobseeker.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Job browsing
+        </a>
+        <a href="resume-management.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Resume Management
+        </a>
+
+        <a href="notification.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Message Notifications
+        </a>
+        <!-- 去编辑页面 -->
+        <a href="moment_edit.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Moments Editing
+        </a>
+        <!-- 这里是共享列表页面 -->
+        <a href="moment_shared.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Moments Shared
+        </a>
+        <a href="../message/announcements.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Announcements
+        </a>
+        <a href="personal-info.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Personal Information
+        </a>
+    </div>
+
+    <div class="flex-grow">
+        <div class="max-w-5xl mx-auto py-8 px-4">
+            <!-- Page title + Create button -->
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-blue-700">Resume Management</h2>
+                    <p class="text-gray-600 text-sm mt-1">Create, publish and manage your resumes.</p>
+                </div>
+                <button id="btn-create-resume"
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded shadow hover:bg-blue-700 focus:outline-none">
+                    Create
+                </button>
+            </div>
+
+            <!-- Resume list card -->
+            <div class="bg-white rounded shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+                            <tr>
+                                <!-- 选择列 -->
+                                <th class="px-4 py-3 text-center font-semibold">Select</th>
+                                <th class="px-4 py-3 text-left font-semibold">Resume Title</th>
+                                <th class="px-4 py-3 text-left font-semibold">Created</th>
+                                <th class="px-4 py-3 text-center font-semibold">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resume-table-body" class="divide-y divide-gray-100">
+                            <!-- rows will be injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="footer"></div>
+
+    <!-- 图片预览弹框 -->
+    <div id="image-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-lg max-w-3xl w-full p-4">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-lg font-semibold">Resume Preview</h3>
+                <button id="image-modal-close"
+                    class="text-gray-500 hover:text-gray-700 text-xl leading-none">&times;</button>
+            </div>
+            <div class="max-h-[70vh] overflow-auto">
+                <img id="image-modal-img" src="" alt="Resume Image" class="w-full h-auto object-contain">
+            </div>
+        </div>
+    </div>
+
+    <!-- 引用独立 JS 文件（路径按你项目结构放，比如 /scripts/） -->
+    <script src="scripts/resume-management.js"></script>
+    <script src="../runtime.js"></script>
+</body>
+
+</html>

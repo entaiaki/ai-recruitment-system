@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TalentFlow - Data Analysis</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="../css/website.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+</head>
+
+<body class="bg-gray-50">
+  <!-- Header -->
+  <div id="header"></div>
+
+  <!-- Nav -->
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8 pt-4 pb-2">
+        <a href="User-management.html"
+          class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-users mr-2"></i> Job Management
+        </a>
+        <a href="data-analysis.html"
+          class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-bar-chart mr-2"></i> Data Analysis
+        </a>
+        <a href="announcement.html"
+          class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-list-alt mr-2"></i> Manage Announcements
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 主内容区 -->
+  <main class="content-wrapper max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- 上面两张图 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <!-- 左：类别占比环形图 -->
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Proportion of each category</h2>
+        <p class="text-xs text-gray-500 mb-4">Proportion of personnel in each category</p>
+        <div class="flex justify-center h-40 w-56 mx-auto">
+          <canvas id="categoryPieChart"></canvas>
+        </div>
+
+        <div class="flex justify-center space-x-6 mt-6">
+          <div class="flex items-center">
+            <span class="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>
+            <span class="text-xs text-gray-600">recruiter</span>
+          </div>
+          <div class="flex items-center">
+            <span class="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+            <span class="text-xs text-gray-600">job seeker</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右：职位数柱状图 -->
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Total number of positions</h2>
+        <p class="text-xs text-gray-500 mb-4">The number of job positions available in each occupation</p>
+
+        <div class="h-48">
+          <canvas id="positionsBarChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地区 vacancies + 平均工资 双轴图 -->
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div class="flex justify-between items-center mb-2">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-800">Data Analysis</h2>
+          <p class="text-xs text-gray-500">Regional total vacancies and average salary</p>
+        </div>
+      </div>
+
+      <div class="h-64">
+        <canvas id="regionVacancySalaryChart"></canvas>
+      </div>
+    </div>
+    <div id="footer"></div>
+  </main>
+
+  <!-- 公共底部 -->
+  <div id="footer"></div>
+
+  <!-- 页面逻辑放在单独 JS 文件 -->
+  <script src="scripts/data-analysis.js"></script>
+  <script>
+    // Header/Footer loader
+    fetch('../header.html').then(res => res.text()).then(data => {
+      document.getElementById('header').innerHTML = data;
+    });
+    fetch('../footer.html').then(res => res.text()).then(data => {
+      document.getElementById('footer').innerHTML = data;
+      if (window.loadRuntime) {
+        window.loadRuntime();
+      }
+    });
+  </script>
+  <script src="../runtime.js"></script>
+</body>
+
+</html>

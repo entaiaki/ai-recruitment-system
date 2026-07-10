@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - Job Browser</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style> body { min-height: 100vh; overflow-y: auto; } .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; align-items: center; justify-content: center; } .modal-overlay.active { display: flex; } .modal-box { background: white; border-radius: 0.5rem; padding: 1.5rem; width: 560px; max-height: 85vh; overflow-y: auto; }</style>
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <img src="../image/logo.png" alt="Logo" class="w-10 h-10 object-cover rounded-full">
+          <span class="text-xl font-bold text-blue-600 ml-2">AlgoTalent</span>
+        </div>
+        <div class="flex items-center space-x-6">
+          <span id="userInfo" class="text-sm text-gray-500"></span>
+          <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-wrap space-x-6 pt-4 pb-2">
+        <a href="dashboard-jobseeker.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium"><i class="fa fa-briefcase mr-1"></i> Browse Jobs</a>
+        <a href="resume-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-file mr-1"></i> My Resumes</a>
+        <a href="personal-info.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-user mr-1"></i> Profile</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-4 py-8">
+    <h2 class="text-2xl font-bold text-gray-800 mb-1">Browse Jobs</h2>
+    <p class="text-gray-500 mb-6">Find and apply to your dream position.</p>
+
+    <div class="flex border-b mb-6">
+      <button onclick="switchTab('open')" class="tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold" id="tabOpen">Open Jobs</button>
+      <button onclick="switchTab('my')" class="tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent ml-4 font-semibold" id="tabMy">My Applications</button>
+    </div>
+
+    <div id="openJobsTab" class="space-y-4">
+      <div id="openJobsList"></div>
+    </div>
+    <div id="myAppsTab" class="hidden space-y-4">
+      <div id="myAppsList"></div>
+    </div>
+  </main>
+
+  <!-- Apply Modal -->
+  <div id="applyModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Apply for <span id="applyJobTitle"></span></h3><button onclick="document.getElementById('applyModal').classList.remove('active')" class="text-gray-400 text-xl">&times;</button></div>
+      <div class="space-y-3">
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Your Candidate ID</label><input id="applyCandId" type="number" class="w-full px-3 py-2 border rounded-md" placeholder="Enter your candidate ID"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Resume ID</label><input id="applyResumeId" type="number" class="w-full px-3 py-2 border rounded-md" placeholder="Enter your resume ID"></div>
+        <button onclick="submitApply()" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 font-semibold">Submit Application</button>
+        <div id="applyMsg" class="text-sm text-center"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../api.js"></script>
+  <script src="../auth.js"></script>
+  <script>
+    var allJobs = [], allApps = [];
+    function switchTab(t) {
+      document.getElementById('openJobsTab').classList.toggle('hidden', t!=='open');
+      document.getElementById('myAppsTab').classList.toggle('hidden', t!=='my');
+      document.getElementById('tabOpen').className = t==='open' ? 'tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold' : 'tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent font-semibold';
+      document.getElementById('tabMy').className = t==='my' ? 'tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold ml-4' : 'tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent ml-4 font-semibold';
+    }
+    async function load() {
+      try {
+        var [jobs, apps] = await Promise.all([API.get('/api/jobs'), API.get('/api/applications')]);
+        allJobs = jobs.filter(function(j){ return j.status === 'published'; });
+        allApps = apps;
+        document.getElementById('openJobsList').innerHTML = allJobs.map(function(j){
+          return '<div class="bg-white rounded-lg shadow-sm border p-4 flex justify-between items-center"><div><div class="font-semibold">'+esc(j.title)+'</div><div class="text-sm text-gray-500">'+esc(j.department)+' &middot; '+esc(j.location)+'</div><div class="text-xs text-gray-400 mt-1">'+esc(j.jd_body||'').slice(0,150)+'...</div></div><button onclick="openApply('+j.id+',\''+esc(j.title)+'\')" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Apply</button></div>';
+        }).join('') || '<div class="text-gray-400 text-center py-8">No open jobs at this time.</div>';
+
+        document.getElementById('myAppsList').innerHTML = allApps.map(function(a){
+          var job = allJobs.find(function(j){ return j.id === a.job_id; });
+          return '<div class="bg-white rounded-lg shadow-sm border p-4"><div class="font-semibold">'+(job?esc(job.title):'Job #'+a.job_id)+'</div><div class="text-sm text-gray-500">Status: '+a.status+'</div>'+(a.ai_total_score!=null?'<div class="text-sm mt-1"><span class="text-gray-500">AI Score:</span> <span class="font-bold '+(a.ai_total_score>=80?'text-green-600':'text-yellow-600')+'">'+a.ai_total_score.toFixed(1)+'/100</span></div>':'')+'</div>';
+        }).join('') || '<div class="text-gray-400 text-center py-8">No applications yet.</div>';
+      } catch(e) { console.error(e); }
+    }
+    function openApply(jobId, title) {
+      document.getElementById('applyJobTitle').textContent = title;
+      document.getElementById('applyModal').dataset.jobId = jobId;
+      document.getElementById('applyModal').classList.add('active');
+      document.getElementById('applyMsg').innerHTML = '';
+    }
+    async function submitApply() {
+      var jobId = parseInt(document.getElementById('applyModal').dataset.jobId);
+      var cid = parseInt(document.getElementById('applyCandId').value);
+      var rid = parseInt(document.getElementById('applyResumeId').value);
+      if (!cid || !rid) { document.getElementById('applyMsg').innerHTML = '<span class="text-red-600">Please enter both IDs.</span>'; return; }
+      try {
+        await API.post('/api/applications', { job_id: jobId, candidate_id: cid, resume_id: rid });
+        document.getElementById('applyMsg').innerHTML = '<span class="text-green-600">Application submitted! AI scoring will start automatically.</span>';
+        setTimeout(function(){ document.getElementById('applyModal').classList.remove('active'); load(); }, 1500);
+      } catch(e) { document.getElementById('applyMsg').innerHTML = '<span class="text-red-600">Error: '+(e.message||'')+'</span>'; }
+    }
+    function esc(s){ return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; }
+    load();
+  </script>
+</body>
+</html>

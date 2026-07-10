@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Message Notifications – Recruiter – TalentFlow</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/website.css">
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- 你可以改成单独的 recruiter header，这里先用通用 header.html -->
+    <div id="header"></div>
+
+    <!-- 顶部导航（Recruiter 版） -->
+    <div class="flex space-x-3 ml-6 mt-3">
+        <a href="dashboard-recruiter.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            My Jobs
+        </a>
+        <a href="notification.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 bg-blue-50 text-blue-600 transition">
+            Message Notifications
+        </a>
+        <a href="../message/announcements.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Announcements
+        </a>
+        <a href="recruiter_profile.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Personal Information
+        </a>
+    </div>
+
+    <!-- Main -->
+    <div class="flex-grow">
+        <div class="max-w-6xl mx-auto py-8 px-4">
+
+            <div class="text-center mb-6">
+                <h2 class="text-3xl font-bold text-blue-700 mb-2">Welcome, Recruiter!</h2>
+                <p class="text-gray-600">View and reply to messages from candidates.</p>
+            </div>
+
+            <!-- Notification Center 页面内容 -->
+            <div id="section-messages">
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold text-gray-800">Notification Center</h3>
+                        <div class="flex items-center gap-4">
+                            <button id="mark-all-read" class="text-sm text-blue-600 hover:text-blue-800 transition">
+                                Mark All as Read
+                            </button>
+                            <button class="text-gray-500 hover:text-gray-700 transition">
+                                <i class="fa fa-cog"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 消息分类标签 -->
+                    <div class="flex flex-wrap gap-4 mb-8 border-b pb-2">
+                        <button class="notification-tab notification-tab-active px-3 py-1 font-medium">
+                            All
+                        </button>
+                        <button
+                            class="notification-tab notification-tab-inactive px-3 py-1 hover:text-gray-700 transition">
+                            Unread
+                        </button>
+                        <button
+                            class="notification-tab notification-tab-inactive px-3 py-1 hover:text-gray-700 transition">
+                            System Alerts
+                        </button>
+                        <button
+                            class="notification-tab notification-tab-inactive px-3 py-1 hover:text-gray-700 transition">
+                            Candidate Messages
+                        </button>
+
+                        <div class="ml-auto">
+                            <div class="relative">
+                                <input type="text" placeholder="Search notifications..."
+                                    class="pl-8 pr-4 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <i
+                                    class="fa fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 消息列表 -->
+                    <div id="notification-list" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <div id="footer"></div>
+
+    <script>
+        // Header/Footer loader（如果你有 recruiter 专用 header，可以把路径换掉）
+        fetch('../header.html').then(res => res.text()).then(data => {
+            document.getElementById('header').innerHTML = data;
+        });
+        fetch('../footer.html').then(res => res.text()).then(data => {
+            document.getElementById('footer').innerHTML = data;
+            if (window.loadRuntime) {
+                window.loadRuntime();
+            }
+        });
+
+        const notificationTabs = document.querySelectorAll('.notification-tab');
+        let allNotifications = [];   // 先空着，渲染完再赋值
+
+        // 1. 从后端加载所有与“当前登录用户”有关的聊天对话
+        async function loadInbox() {
+            try {
+                // 同 jobseeker，用同一个 get_inbox.php
+                const res = await fetch('../message/get_inbox.php');
+                const json = await res.json();
+                if (!json.ok) {
+                    console.error(json.error || 'Failed to load inbox');
+                    document.getElementById('notification-list').innerHTML =
+                        '<div class="text-xs text-gray-400">Failed to load messages.</div>';
+                    return;
+                }
+                renderNotifications(json.data || []);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('notification-list').innerHTML =
+                    '<div class="text-xs text-gray-400">Failed to load messages.</div>';
+            }
+        }
+
+        // 2. 把后端返回的 list 渲染成一格一格的“对话卡片”
+        function renderNotifications(list) {
+            const container = document.getElementById('notification-list');
+            container.innerHTML = '';
+
+            if (!list || !list.length) {
+                container.innerHTML =
+                    '<div class="text-gray-500 text-sm text-center py-8">No messages yet.</div>';
+                allNotifications = [];
+                return;
+            }
+
+            // （1）按 job_id + other_user_id 分组
+            const convoMap = {};
+
+            list.forEach(item => {
+                const jobId = item.job_id || 'nojob';
+                const otherId = item.other_user_id || item.sender_id;
+                const key = `${jobId}_${otherId}`;
+
+                const isUnreadForMe =
+                    (item.unread_for_me === 1 || item.unread_for_me === '1') ||
+                    (item.unread_for_me === undefined && item.is_read === 0 && item.from_me == 0);
+
+                if (!convoMap[key]) {
+                    convoMap[key] = {
+                        job_id: item.job_id,
+                        other_user_id: otherId,
+                        other_user_name: item.other_user_name || item.sender_name || 'User',
+                        job_role: item.job_role || 'Job Position',
+                        company_name: item.company_name || '',
+                        last_content: item.content,
+                        last_sent_at: item.sent_at,
+                        last_from_me: item.from_me == 1,
+                        has_unread: isUnreadForMe
+                    };
+                } else {
+                    if (isUnreadForMe) {
+                        convoMap[key].has_unread = true;
+                    }
+                }
+            });
+
+            const convoList = Object.values(convoMap);
+
+            if (!convoList.length) {
+                container.innerHTML =
+                    '<div class="text-gray-500 text-sm text-center py-8">No messages yet.</div>';
+                allNotifications = [];
+                return;
+            }
+
+            // （2）渲染每个对话
+            convoList.forEach(convo => {
+                const card = document.createElement('div');
+                const isUnread = convo.has_unread;
+
+                card.className = 'notification bg-white ' + (isUnread ? 'unread' : '');
+                card.dataset.read = isUnread ? '0' : '1';
+
+                const otherName = convo.other_user_name || 'User';
+                const jobTitle = convo.job_role || 'Job Position';
+                const company = convo.company_name || '';
+                const prefix = convo.last_from_me ? 'You: ' : '';
+
+                card.innerHTML = `
+          <div class="flex justify-between items-start mb-2">
+            <div class="flex items-start gap-3">
+              <div class="text-gray-500">
+                <i class="fa fa-commenting text-xl"></i>
+              </div>
+              <div>
+                <div class="font-medium text-gray-900">${otherName}</div>
+                <h4 class="font-medium text-blue-800">
+                  ${jobTitle}${company ? ' · ' + company : ''}
+                </h4>
+              </div>
+            </div>
+            ${isUnread ? '<div class="notification-unread-indicator"></div>' : ''}
+          </div>
+          <p class="text-gray-600 text-sm mb-3 ml-10 line-clamp-2">
+            ${prefix}${convo.last_content}
+          </p>
+          <div class="flex justify-between items-center ml-10">
+            <span class="text-xs text-gray-500">${convo.last_sent_at}</span>
+            <div class="flex gap-2">
+              ${convo.job_id
+                        ? `<button
+                      class="btn-chat bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition"
+                      data-job_id="${convo.job_id}"
+                      data-job_role="${jobTitle}"
+                      data-company_name="${company}"
+                      data-other_user_id="${convo.other_user_id}">
+                      Open Chat
+                    </button>`
+                        : ''
+                    }
+            </div>
+          </div>
+        `;
+
+                container.appendChild(card);
+            });
+
+            allNotifications = Array.from(container.querySelectorAll('.notification'));
+        }
+
+        // 3. 标签切换 & 筛选
+        notificationTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                notificationTabs.forEach(t => {
+                    t.classList.remove('notification-tab-active');
+                    t.classList.add('notification-tab-inactive');
+                });
+                tab.classList.remove('notification-tab-inactive');
+                tab.classList.add('notification-tab-active');
+
+                const tabText = tab.textContent.trim();
+
+                allNotifications.forEach(notification => {
+                    const titleEl = notification.querySelector('h4');
+                    const senderEl = notification.querySelector('.font-medium.text-gray-900');
+                    const title = titleEl ? titleEl.textContent : '';
+                    const sender = senderEl ? senderEl.textContent : '';
+                    const isUnread = notification.classList.contains('unread');
+
+                    if (tabText === 'All') {
+                        notification.style.display = 'block';
+                    } else if (tabText === 'Unread') {
+                        notification.style.display = isUnread ? 'block' : 'none';
+                    } else if (tabText === 'System Alerts') {
+                        const isSystemAlert = title.includes('System') || title.includes('Security');
+                        notification.style.display = isSystemAlert ? 'block' : 'none';
+                    } else if (tabText === 'Candidate Messages') {
+                        // 对招聘者来说，“有名字的聊天”都可以认为是 Candidate Messages
+                        const isCandidateMsg = sender !== '';
+                        notification.style.display = isCandidateMsg ? 'block' : 'none';
+                    }
+                });
+            });
+        });
+
+        // 4. “Mark All as Read”（目前只改前端样式）
+        const markAllReadBtn = document.getElementById('mark-all-read');
+        markAllReadBtn.addEventListener('click', () => {
+            allNotifications.forEach(notification => {
+                notification.classList.remove('unread');
+                const dot = notification.querySelector('.notification-unread-indicator');
+                if (dot) dot.remove();
+            });
+        });
+
+        // 5. 页面加载完，拉一次数据
+        loadInbox();
+        window.addEventListener('pageshow', function () {
+            loadInbox();
+        });
+    </script>
+
+    <!-- 统一使用 ../message/chat.js 处理 .btn-chat 跳转 -->
+    <script src="../message/chat.js"></script>
+    <script src="../runtime.js"></script>
+
+</body>
+
+</html>

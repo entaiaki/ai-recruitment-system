@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - Recruiter Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style> body { min-height: 100vh; overflow-y: auto; } .score-bar { height: 6px; border-radius: 3px; background: #E5E7EB; overflow: hidden; } .score-bar-fill { height: 100%; border-radius: 3px; } .status-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; } .tab-nav { transition: all 0.2s; } .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; align-items: center; justify-content: center; } .modal-overlay.active { display: flex; } .modal-box { background: white; border-radius: 0.5rem; padding: 1.5rem; width: 640px; max-height: 85vh; overflow-y: auto; }</style>
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <img src="../image/logo.png" alt="Logo" class="w-10 h-10 object-cover rounded-full">
+          <span class="text-xl font-bold text-blue-600 ml-2">AlgoTalent</span>
+        </div>
+        <div class="flex items-center space-x-6">
+          <span id="userInfo" class="text-sm text-gray-500"></span>
+          <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-wrap space-x-6 pt-4 pb-2">
+        <a href="../job-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-briefcase mr-1"></i> Jobs</a>
+        <a href="../candidates.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-users mr-1"></i> Candidates</a>
+        <a href="../applications.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-file-text mr-1"></i> Applications</a>
+        <a href="dashboard-recruiter.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium"><i class="fa fa-tachometer mr-1"></i> Dashboard</a>
+        <a href="post-job.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-plus-circle mr-1"></i> Post Job</a>
+        <a href="../index.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium"><i class="fa fa-list-alt mr-1"></i> Audit Logs</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 py-8">
+    <h2 class="text-2xl font-bold text-gray-800 mb-1">Recruiter Dashboard</h2>
+    <p class="text-gray-500 mb-6">Manage your jobs and review candidates with AI scores.</p>
+
+    <div class="flex border-b mb-6">
+      <button onclick="switchTab('my-jobs')" class="tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold focus:outline-none" id="tabMyJobs">My Jobs</button>
+      <button onclick="switchTab('post-job')" class="tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent ml-4 font-semibold focus:outline-none" id="tabPostJob">Post New Job</button>
+    </div>
+
+    <div id="myJobsTab" class="space-y-4">
+      <div id="myJobsList" class="space-y-3"></div>
+    </div>
+
+    <div id="postJobTab" class="hidden">
+      <a href="post-job.html" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">Go to Post Job Page</a>
+    </div>
+  </main>
+
+  <!-- Applicants Modal -->
+  <div id="applicantsModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold">Applicants for <span id="apJobTitle"></span></h3>
+        <button onclick="closeApplicantsModal()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <button onclick="filterApplicants('all')" class="px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100" id="apFilterAll">All</button>
+        <button onclick="filterApplicants('ai_scored')" class="px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100" id="apFilterScored">AI Scored</button>
+        <button onclick="filterApplicants('hr_review')" class="px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100" id="apFilterHR">HR Review</button>
+        <button onclick="filterApplicants('interview')" class="px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100" id="apFilterInterview">Interview</button>
+        <button onclick="filterApplicants('hired')" class="px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100" id="apFilterHired">Hired</button>
+      </div>
+      <div id="applicantsList" class="space-y-3 max-h-96 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- AI Score Detail Modal -->
+  <div id="scoreModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">AI Score Detail</h3><button onclick="document.getElementById('scoreModal').classList.remove('active')" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button></div>
+      <div id="scoreContent"></div>
+    </div>
+  </div>
+
+  <script src="../api.js"></script>
+  <script src="../auth.js"></script>
+  <script>
+    var allJobs = [], allApps = [], currentJobApps = [], currentFilter = 'all';
+    var STATUS_LABELS = { submitted:'Submitted', ai_scoring:'AI Scoring', scoring_failed:'Scoring Failed', ai_scored:'AI Scored', hr_review:'HR Review', dept_review:'Dept Review', interview:'Interview', offered:'Offered', hired:'Hired', rejected:'Rejected' };
+    var STATUS_COLORS = { submitted:'bg-gray-200 text-gray-700', ai_scoring:'bg-yellow-100 text-yellow-700', ai_scored:'bg-blue-100 text-blue-700', hr_review:'bg-purple-100 text-purple-700', interview:'bg-orange-100 text-orange-700', offered:'bg-green-100 text-green-700', hired:'bg-green-500 text-white', rejected:'bg-red-200 text-red-800' };
+    var DIM_META = [
+      { key:'score_skills', label:'Skills Match', max:25, color:'#3B82F6' },
+      { key:'score_experience', label:'Experience', max:25, color:'#F59E0B' },
+      { key:'score_education', label:'Education', max:20, color:'#10B981' },
+      { key:'score_potential', label:'Potential', max:15, color:'#8B5CF6' },
+      { key:'score_stability', label:'Stability', max:15, color:'#EC4899' }
+    ];
+
+    function switchTab(t) {
+      var my = document.getElementById('myJobsTab'), pj = document.getElementById('postJobTab');
+      var mt = document.getElementById('tabMyJobs'), pt = document.getElementById('tabPostJob');
+      if (t === 'my-jobs') { my.classList.remove('hidden'); pj.classList.add('hidden'); mt.className='tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold'; pt.className='tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent ml-4 font-semibold'; }
+      else { my.classList.add('hidden'); pj.classList.remove('hidden'); pt.className='tab-nav px-4 py-2 text-blue-700 border-b-2 border-blue-700 font-semibold ml-4'; mt.className='tab-nav px-4 py-2 text-gray-500 border-b-2 border-transparent font-semibold'; }
+    }
+
+    async function loadJobs() {
+      try {
+        var [jobs, apps] = await Promise.all([API.get('/api/jobs'), API.get('/api/applications')]);
+        allJobs = jobs; allApps = apps;
+
+        // Build jobs by app count
+        var appCounts = {};
+        apps.forEach(function(a){ appCounts[a.job_id] = (appCounts[a.job_id]||0) + 1; });
+
+        var html = jobs.map(function(j){
+          var count = appCounts[j.id] || 0;
+          return '<div class="bg-white rounded-lg shadow-sm border p-4 flex justify-between items-center">' +
+            '<div><div class="font-semibold text-gray-800">'+esc(j.title)+'</div><div class="text-sm text-gray-500">'+esc(j.department)+' &middot; '+esc(j.location)+' &middot; '+count+' applicants</div></div>' +
+            '<div class="flex gap-2">' +
+            '<button onclick="viewApplicants('+j.id+',\''+esc(j.title)+'\')" class="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">View Applicants</button>' +
+            '<button onclick="closeJob('+j.id+')" class="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200">Close</button>' +
+            '</div></div>';
+        }).join('');
+        document.getElementById('myJobsList').innerHTML = html || '<div class="text-gray-400 text-center py-8">No jobs posted yet. <a href="post-job.html" class="text-blue-600">Post one now</a>.</div>';
+        document.getElementById('userInfo').textContent = 'Recruiter Dashboard';
+      } catch(e){ console.error(e); }
+    }
+
+    async function viewApplicants(jobId, jobTitle) {
+      currentJobApps = allApps.filter(function(a){ return a.job_id === jobId; });
+      document.getElementById('apJobTitle').textContent = jobTitle;
+      filterApplicants('all');
+      document.getElementById('applicantsModal').classList.add('active');
+    }
+
+    function filterApplicants(filter) {
+      currentFilter = filter;
+      var filtered = filter === 'all' ? currentJobApps : currentJobApps.filter(function(a){ return a.status === filter; });
+      // Reset all filter buttons
+      ['All','Scored','HR','Interview','Hired'].forEach(function(f){ var b = document.getElementById('apFilter'+f); if(b){ b.className='px-3 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-100'; } });
+      var activeBtn = {all:'All',ai_scored:'Scored',hr_review:'HR',interview:'Interview',hired:'Hired'}[filter];
+      var btn = document.getElementById('apFilter'+(activeBtn||'All'));
+      if (btn) btn.className = 'px-3 py-1 text-xs rounded-full bg-blue-600 text-white';
+
+      document.getElementById('applicantsList').innerHTML = filtered.length ? filtered.map(function(a){
+        var score = a.ai_total_score != null ? '<span class="font-bold '+(a.ai_total_score>=80?'text-green-600':a.ai_total_score>=60?'text-yellow-600':'text-red-600')+'">'+a.ai_total_score.toFixed(1)+'</span>' : '<span class="text-gray-400">—</span>';
+        var hasScore = a.ai_total_score != null && a.ai_total_score >= 0;
+        return '<div class="border rounded p-3 flex justify-between items-center">' +
+          '<div><div class="font-medium text-sm">Candidate #'+a.candidate_id+'</div><div class="text-xs text-gray-400">Resume #'+a.resume_id+' &middot; '+(STATUS_LABELS[a.status]||a.status)+'</div></div>' +
+          '<div class="flex items-center gap-3">' +
+          '<div class="text-right"><div class="text-xs text-gray-400">AI Score</div>'+score+'</div>' +
+          (hasScore ? '<button onclick="showScoreDetail('+a.id+')" class="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200">Details</button>' : '') +
+          '</div></div>';
+      }).join('') : '<div class="text-gray-400 text-center py-4">No applicants in this status.</div>';
+    }
+
+    function showScoreDetail(appId) {
+      var a = currentJobApps.find(function(x){ return x.id === appId; });
+      if (!a || a.ai_total_score == null) return;
+
+      var total = a.ai_total_score.toFixed(1);
+      var rec = a.ai_recommendation || '—';
+      var summary = a.ai_summary || '—';
+
+      var dimsHtml = DIM_META.map(function(d){
+        var v = a[d.key] || 0, pct = (v/d.max*100).toFixed(0);
+        return '<div class="mb-3"><div class="flex justify-between text-xs mb-1"><span>'+d.label+'</span><span class="font-medium">'+v.toFixed(1)+'/'+d.max+'</span></div><div class="score-bar"><div class="score-bar-fill" style="width:'+pct+'%;background:'+d.color+'"></div></div></div>';
+      }).join('');
+
+      var strengths = a.ai_strengths; try { strengths = JSON.parse(strengths); } catch(e){}
+      var weaknesses = a.ai_weaknesses; try { weaknesses = JSON.parse(weaknesses); } catch(e){}
+
+      document.getElementById('scoreContent').innerHTML =
+        '<div class="text-2xl font-bold text-center mb-4">'+total+'/100 <span class="text-sm text-gray-500">('+rec+')</span></div>' +
+        dimsHtml +
+        '<div class="grid grid-cols-2 gap-2 mt-4 text-xs">' +
+        '<div class="bg-green-50 rounded p-2"><div class="font-medium text-green-700">Strengths</div><div>'+esc(Array.isArray(strengths)?strengths.join(', '):(strengths||'—'))+'</div></div>' +
+        '<div class="bg-red-50 rounded p-2"><div class="font-medium text-red-700">Weaknesses</div><div>'+esc(Array.isArray(weaknesses)?weaknesses.join(', '):(weaknesses||'—'))+'</div></div></div>' +
+        '<div class="mt-3 text-xs text-gray-600"><strong>Summary:</strong> '+esc(summary)+'</div>';
+      document.getElementById('scoreModal').classList.add('active');
+    }
+
+    function closeApplicantsModal() { document.getElementById('applicantsModal').classList.remove('active'); }
+    function closeJob(jobId) {
+      if (!confirm('Close this job?')) return;
+      API.patch('/api/jobs/'+jobId, { status: 'closed' }).then(function(){ loadJobs(); }).catch(function(e){ alert('Failed'); });
+    }
+    function esc(s){ return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; }
+
+    loadJobs();
+  </script>
+</body>
+</html>

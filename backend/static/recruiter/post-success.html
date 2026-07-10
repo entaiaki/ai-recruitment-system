@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Application Submitted – CareerLink</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col items-center justify-center">
+  <div class="bg-white p-10 rounded-lg shadow max-w-xl w-full text-center">
+    <div class="text-blue-600 text-5xl mb-4">✔</div>
+    <h1 class="text-2xl font-bold mb-2">Your post has been successfully submitted!</h1>
+    <div class="flex justify-center space-x-4">
+      <a href="dashboard-recruiter.html" class="bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-800">Return to
+        dashboard</a>
+    </div>
+  </div>
+
+  <div id="footer"></div>
+  <script>
+    // Header/Footer loader
+    fetch('../header.html').then(res => res.text()).then(data => {
+      document.getElementById('header').innerHTML = data;
+    });
+    fetch('../footer.html').then(res => res.text()).then(data => {
+      document.getElementById('footer').innerHTML = data;
+      if (window.loadRuntime) {
+        window.loadRuntime();
+      }
+    });
+  </script>
+
+  <script src="../runtime.js"></script>
+</body>
+
+
+</html>

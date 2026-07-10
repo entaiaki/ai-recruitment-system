@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Admin Announcements – TalentFlow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <!-- 公共头部 -->
+    <div id="header"></div>
+    <!-- Nav -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex space-x-8 pt-4 pb-2">
+                <a href="User-management.html"
+                    class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+                    <i class="fa fa-users mr-2"></i> Job Management
+                </a>
+                <a href="data-analysis.html"
+                    class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+                    <i class="fa fa-bar-chart mr-2"></i> Data Analysis
+                </a>
+                <a href="announcement.html"
+                    class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center">
+                    <i class="fa fa-list-alt mr-2"></i> Manage Announcements
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 max-w-5xl mx-auto px-4 py-6">
+        <h1 class="text-2xl font-bold text-gray-800 mb-4">Announcements Management</h1>
+
+        <!-- 创建公告 -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Create New Announcement</h2>
+
+            <form id="announcement-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <input type="text" id="ann-title" class="w-full border rounded px-3 py-2 text-sm"
+                        placeholder="Announcement title" required>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                    <textarea id="ann-content" class="w-full border rounded px-3 py-2 text-sm h-32 resize-y"
+                        placeholder="Write announcement content here..." required></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Target</label>
+                    <select id="ann-target-type" class="w-full border rounded px-3 py-2 text-sm">
+                        <option value="all_non_admin">All users (non-admin)</option>
+                        <option value="all_jobseekers">All jobseekers</option>
+                        <option value="all_recruiters">All recruiters</option>
+                        <option value="single_user">Specific user (by users_id)</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">
+                        For "Specific user", please provide the user's <code>users_id</code>.
+                    </p>
+                </div>
+
+                <div id="target-user-id-wrapper" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Target users_id</label>
+                    <input type="number" id="ann-target-user-id" class="w-full border rounded px-3 py-2 text-sm"
+                        placeholder="Enter users_id (integer)">
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="submit"
+                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700">
+                        Send Announcement
+                    </button>
+                    <span id="ann-status" class="text-xs text-gray-500"></span>
+                </div>
+            </form>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold">Announcements History</h2>
+                <button id="reload-announcements" class="text-sm text-blue-600 hover:text-blue-800">
+                    Reload
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">ID</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Title</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Target</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Created At</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Status</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-600">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ann-list">
+                        <!-- JS 填充 -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-between items-center mt-3">
+                <button id="ann-prev" class="px-3 py-1 bg-gray-200 text-sm rounded hover:bg-gray-300">
+                    Previous
+                </button>
+                <span id="ann-page-info" class="text-sm text-gray-600"></span>
+                <button id="ann-next" class="px-3 py-1 bg-gray-200 text-sm rounded hover:bg-gray-300">
+                    Next
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 公共底部 -->
+    <div id="footer"></div>
+
+    <script>
+        // 根据你项目实际路径调整
+        fetch('../header.html').then(r => r.text()).then(html => {
+            document.getElementById('header').innerHTML = html;
+        });
+        fetch('../footer.html').then(r => r.text()).then(html => {
+            document.getElementById('footer').innerHTML = html;
+            if (window.loadRuntime) {
+                window.loadRuntime();
+            }
+        });
+    </script>
+
+    <script src="scripts/announcement.js"></script>
+    <script src="../runtime.js"></script>
+</body>
+
+</html>

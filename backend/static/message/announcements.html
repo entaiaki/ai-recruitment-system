@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--message/announcements.html-->
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Announcements – TalentFlow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <div id="header"></div>
+
+    <main class="flex-1">
+        <div class="w-full max-w-7xl mx-auto px-8 py-8" style="height: calc(100vh - 140px);">
+            <!-- 顶部栏 -->
+            <div class="flex items-center justify-between mb-4">
+                <button onclick="history.back()"
+                    class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                    ← Back
+                </button>
+                <div class="text-right">
+                    <h2 class="text-lg font-semibold text-gray-900">Announcements</h2>
+                    <p class="text-xs text-gray-500">Messages from Admin</p>
+                </div>
+            </div>
+
+            <!-- 公告卡片 -->
+            <div class="flex-1 bg-white rounded-lg shadow flex flex-col overflow-hidden">
+                <div id="ann-thread" class="flex-1 px-4 py-4 space-y-3 overflow-y-auto">
+                    <!-- JS 动态插入 -->
+                </div>
+
+                <div class="border-t px-4 py-3 bg-gray-50 text-xs text-gray-500">
+                    This is a read-only announcement channel. You cannot reply here.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="footer"></div>
+
+    <script>
+        // 加载公共头尾
+        fetch('../footer.html').then(r => r.text()).then(html => {
+            document.getElementById('footer').innerHTML = html;
+            if (window.loadRuntime) {
+                window.loadRuntime();
+            }
+        });
+
+        const annThread = document.getElementById('ann-thread');
+
+        async function loadAnnouncements() {
+            // 先显示 Loading
+            annThread.innerHTML = `
+                <div class="text-xs text-gray-400 text-center">
+                    Loading announcements...
+                </div>
+            `;
+
+            try {
+                // 普通用户应该调 message 目录下的这个接口
+                const res = await fetch('get_my_announcements.php');
+                const json = await res.json();
+
+                if (!json.ok) {
+                    annThread.innerHTML = `
+                        <div class="text-xs text-red-500 text-center">
+                            ${json.error || 'Failed to load announcements.'}
+                        </div>
+                    `;
+                    return;
+                }
+
+                const items = json.data || [];
+
+                if (items.length === 0) {
+                    annThread.innerHTML = `
+                        <div class="text-xs text-gray-400 text-center">
+                            No announcements yet.
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 清空再渲染
+                annThread.innerHTML = '';
+
+                items.forEach(a => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white border rounded-lg px-3 py-2 shadow-sm';
+
+                    card.innerHTML = `
+                        <div class="text-[11px] text-gray-400">
+                            ${a.created_at}
+                        </div>
+                        <div class="mt-1 font-semibold text-sm text-gray-900">
+                            ${a.title}
+                        </div>
+                        <div class="mt-1 text-xs text-gray-700 whitespace-pre-line">
+                            ${a.content}
+                        </div>
+                    `;
+
+                    annThread.appendChild(card);
+                });
+            } catch (err) {
+                console.error(err);
+                annThread.innerHTML = `
+                    <div class="text-xs text-red-500 text-center">
+                        Network error.
+                    </div>
+                `;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadAnnouncements);
+    </script>
+    <script src="../runtime.js"></script>
+
+</body>
+
+
+</html>

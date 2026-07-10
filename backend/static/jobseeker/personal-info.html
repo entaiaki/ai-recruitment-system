@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Information – TalentFlow</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow mb-6">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <a class="flex items-center space-x-2">
+                <!-- Logo -->
+                <img src="../image/logo.png" alt="CareerLink Logo" class="w-14 h-14 object-cover rounded-full">
+                <span class="text-2xl font-bold text-blue-700">
+                    TalentFlow
+                </span>
+            </a>
+
+            <div class="flex items-center space-x-4">
+                <button onclick="window.location.href='../Logout.php'"
+                    class="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700 transition text-sm">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </header>
+    <div class="flex space-x-3 ml-6">
+        <a href="dashboard-jobseeker.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Job browsing
+        </a>
+        <a href="resume-management.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Resume Management
+        </a>
+
+        <a href="notification.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Message Notifications
+        </a>
+        <!-- 去编辑页面 -->
+        <a href="moment_edit.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Moments Editing
+        </a>
+        <!-- 这里是共享列表页面 -->
+        <a href="moment_shared.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Moments Shared
+        </a>
+        <a href="../message/announcements.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Announcements
+        </a>
+        <a href="personal-info.html"
+            class="px-4 py-2 rounded-lg font-semibold border border-blue-500 text-blue-600 hover:bg-blue-50 transition">
+            Personal Information
+        </a>
+    </div>
+
+    <main class="flex-grow">
+        <div class="max-w-xl mx-auto bg-white rounded-lg shadow p-6 mt-4 mb-8">
+            <h1 class="text-2xl font-bold text-blue-700 mb-4">Personal Information</h1>
+            <p class="text-sm text-gray-600 mb-4">
+                Please fill in your personal details. These will be used automatically when you apply for jobs.
+            </p>
+
+            <form id="personal-info-form" class="space-y-4">
+                <div>
+                    <label for="pi_name" class="block text-gray-700 mb-1">
+                        Name <span class="text-red-600">*</span>
+                    </label>
+                    <input id="pi_name" name="name" type="text"
+                        class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Enter your name" required>
+                </div>
+
+                <div>
+                    <label for="pi_email" class="block text-gray-700 mb-1">
+                        Email ID <span class="text-red-600">*</span>
+                    </label>
+                    <input id="pi_email" name="email" type="email"
+                        class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Enter your email" required>
+                </div>
+
+                <div>
+                    <label for="pi_education" class="block text-gray-700 mb-1">
+                        Highest Education Level <span class="text-red-600">*</span>
+                    </label>
+                    <select id="pi_education" name="education"
+                        class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        required>
+                        <option value="">Any Education Level</option>
+                        <option value="High School">High School / Secondary School</option>
+                        <option value="Diploma">Diploma / Associate Degree</option>
+                        <option value="Bachelor">Bachelor's Degree</option>
+                        <option value="Master">Master's Degree</option>
+                        <option value="PhD">PhD / Doctorate</option>
+                        <option value="Postdoctoral">Postdoctoral</option>
+                        <option value="Vocational">Vocational / Technical Training</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <hr class="my-4">
+
+                <p class="text-sm text-gray-600">
+                    The following phone numbers are used <span class="font-semibold">for job applications only</span>.
+                    They are stored locally in your browser and will be attached to each application as
+                    <span class="font-semibold">primary</span> and <span class="font-semibold">secondary</span> phones.
+                    They will <span class="font-semibold text-red-600">NOT</span> change your account phone.
+                </p>
+
+                <div>
+                    <label for="pi_phone1" class="block text-gray-700 mb-1">
+                        Application Phone 1 (primary) <span class="text-red-600">*</span>
+                    </label>
+                    <input id="pi_phone1" name="phone1" type="tel"
+                        class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Enter your primary phone number" pattern="^[0-9]{11}$" maxlength="11" required>
+                    <span class="text-xs text-gray-500">11 digits only</span>
+                </div>
+
+                <div>
+                    <label for="pi_phone2" class="block text-gray-700 mb-1">
+                        Application Phone 2 (secondary, optional)
+                    </label>
+                    <input id="pi_phone2" name="phone2" type="tel"
+                        class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Enter your second phone number" pattern="^[0-9]{11}$" maxlength="11">
+                    <span class="text-xs text-gray-500">
+                        11 digits only. If provided, it will be saved as secondary phone for each application.
+                    </span>
+                </div>
+
+                <div id="pi_message" class="text-sm mt-2"></div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" onclick="window.location.href='dashboard-jobseeker.html'"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <div id="footer"></div>
+    <script>
+        // Header/Footer loader
+        fetch('../header.html').then(res => res.text()).then(data => {
+            document.getElementById('header').innerHTML = data;
+        });
+        fetch('../footer.html').then(res => res.text()).then(data => {
+            document.getElementById('footer').innerHTML = data;
+            if (window.loadRuntime) {
+                window.loadRuntime();
+            }
+        });
+    </script>
+
+    <script src="scripts/personal-info.js"></script>
+    <script src="../runtime.js"></script>
+</body>
+
+</html>
