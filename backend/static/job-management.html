@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - Job Management</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <span class="text-xl font-bold text-blue-600">AlgoTalent</span>
+        <span class="text-sm text-gray-500" id="headerUser"></span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="text-xs text-gray-400">AI-Powered Recruitment</span>
+        <button onclick="API.logout()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition text-sm font-medium">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8 pt-4 pb-2">
+        <a href="job-management.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-users mr-2"></i> Job Management
+        </a>
+        <a href="data-analysis.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-bar-chart mr-2"></i> Data Analysis
+        </a>
+        <a href="content-security.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-shield mr-2"></i> Content and Security Monitoring
+        </a>
+        <a href="index.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-chevron-down mr-2"></i> Log and Performance Monitoring
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-8">
+    <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">List of Jobs</h1>
+        <p class="text-gray-500">Manage job postings, including creation, editing and statistics</p>
+      </div>
+      <button onclick="openNewJobModal()"
+        class="mt-4 sm:mt-0 bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition flex items-center gap-2">
+        <i class="fa fa-plus"></i> Publish New Job
+      </button>
+    </div>
+
+    <!-- Search -->
+    <div class="mb-8 flex flex-col sm:flex-row gap-4">
+      <div class="flex-grow max-w-md">
+        <input type="text" id="jobSearch" placeholder="Search Jobs..."
+          class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          oninput="renderJobs()">
+      </div>
+    </div>
+
+    <!-- Jobs Table -->
+    <div class="bg-white shadow-sm rounded-lg overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operation</th>
+          </tr>
+        </thead>
+        <tbody id="jobsBody" class="bg-white divide-y divide-gray-200">
+          <tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div id="publishJobModal" class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4 hidden">
+      <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+        <h3 id="modalTitle" class="text-lg font-semibold text-gray-900">Publish New Job</h3>
+        <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700"><i class="fa fa-times"></i></button>
+      </div>
+      <form id="jobForm" onsubmit="submitJobForm(event)" class="p-6 space-y-4">
+        <input type="hidden" id="jobIdInput" value="">
+        <div>
+          <label class="block text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
+          <input id="jobTitle" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" required>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-1">Department <span class="text-red-500">*</span></label>
+          <input id="jobDept" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" required>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-gray-700 mb-1">Location <span class="text-red-500">*</span></label>
+            <input id="jobLocation" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" required>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-1">Salary Range</label>
+            <input id="jobSalary" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="e.g. 20K-35K">
+          </div>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-1">Required Skills (comma separated)</label>
+          <input id="jobSkills" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500" placeholder="e.g. Python, FastAPI, PostgreSQL">
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-1">JD Body</label>
+          <textarea id="jobBody" rows="6" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+            placeholder="# Job Description&#10;&#10;Describe responsibilities and requirements..."></textarea>
+        </div>
+        <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <button type="button" onclick="closeModal()" class="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition">Cancel</button>
+          <button id="submitJobBtn" type="submit" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">Publish Job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    var jobList = [];
+
+    // ── Load jobs from API ───────────────────────────────
+    async function loadJobs() {
+      try {
+        jobList = await API.get('/api/jobs');
+        renderJobs();
+      } catch (e) {
+        console.error('Failed to load jobs:', e);
+        document.getElementById('jobsBody').innerHTML =
+          '<tr><td colspan="6" class="px-6 py-8 text-center text-red-400">Failed to load jobs</td></tr>';
+      }
+    }
+
+    function renderJobs() {
+      var tbody = document.getElementById('jobsBody');
+      var keyword = (document.getElementById('jobSearch').value || '').toLowerCase();
+      var filtered = jobList.filter(function (j) {
+        return !keyword || (j.title || '').toLowerCase().indexOf(keyword) >= 0;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">No jobs found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function (j) {
+        var statusColor = j.status === 'active' ? 'green' : j.status === 'paused' ? 'yellow' : 'gray';
+        var statusLabel = j.status.charAt(0).toUpperCase() + j.status.slice(1);
+        return '<tr class="hover:bg-gray-50 transition-colors">'
+          + '<td class="px-6 py-4 text-sm text-gray-900">' + j.id + '</td>'
+          + '<td class="px-6 py-4 text-sm text-gray-900">' + (j.title || '') + '</td>'
+          + '<td class="px-6 py-4 text-sm text-gray-500">' + (j.department || '') + '</td>'
+          + '<td class="px-6 py-4 text-sm text-gray-500">' + (j.location || '') + '</td>'
+          + '<td class="px-6 py-4"><span class="px-2 inline-flex text-xs font-semibold rounded-full bg-' + statusColor + '-100 text-' + statusColor + '-800">' + statusLabel + '</span></td>'
+          + '<td class="px-6 py-4"><div class="flex space-x-3">'
+          + '<button onclick="editJob(' + j.id + ')" class="text-gray-500 hover:text-gray-700" title="Edit"><i class="fa fa-cog"></i></button>'
+          + '<button onclick="deleteJob(' + j.id + ')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fa fa-trash"></i></button>'
+          + '</div></td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    // ── Modal helpers ────────────────────────────────────
+    function openNewJobModal() {
+      document.getElementById('jobForm').reset();
+      document.getElementById('jobIdInput').value = '';
+      document.getElementById('modalTitle').textContent = 'Publish New Job';
+      document.getElementById('submitJobBtn').textContent = 'Publish Job';
+      document.getElementById('publishJobModal').classList.remove('hidden');
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function editJob(id) {
+      var job = jobList.find(function (j) { return j.id === id; });
+      if (!job) return;
+      document.getElementById('jobIdInput').value = job.id;
+      document.getElementById('jobTitle').value = job.title || '';
+      document.getElementById('jobDept').value = job.department || '';
+      document.getElementById('jobLocation').value = job.location || '';
+      document.getElementById('jobSalary').value = (job.salary_min ? job.salary_min + 'K' : '') + (job.salary_max ? '-' + job.salary_max + 'K' : '');
+      document.getElementById('jobSkills').value = (job.required_skills || []).join(', ');
+      document.getElementById('jobBody').value = job.jd_body || '';
+      document.getElementById('modalTitle').textContent = 'Edit Job #' + job.id;
+      document.getElementById('submitJobBtn').textContent = 'Update Job';
+      document.getElementById('publishJobModal').classList.remove('hidden');
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('publishJobModal').classList.add('hidden');
+      document.getElementById('modalOverlay').classList.add('hidden');
+    }
+
+    // ── Submit ───────────────────────────────────────────
+    async function submitJobForm(e) {
+      e.preventDefault();
+      var id = document.getElementById('jobIdInput').value;
+      var title = document.getElementById('jobTitle').value;
+      var dept = document.getElementById('jobDept').value;
+      var loc = document.getElementById('jobLocation').value;
+      var salaryStr = document.getElementById('jobSalary').value;
+      var skillsStr = document.getElementById('jobSkills').value;
+      var body = document.getElementById('jobBody').value;
+
+      var salaryMin = 0, salaryMax = 0;
+      var match = salaryStr.match(/(\d+)\s*[kK]?\s*[-~]\s*(\d+)/);
+      if (match) { salaryMin = parseInt(match[1]); salaryMax = parseInt(match[2]); }
+
+      var skills = skillsStr ? skillsStr.split(',').map(function (s) { return s.trim(); }) : [];
+      var payload = {
+        title: title, department: dept, location: loc,
+        salary_min: salaryMin, salary_max: salaryMax,
+        required_skills: skills, jd_body: body,
+        required_education: 'any'
+      };
+
+      try {
+        if (id) {
+          await API.patch('/api/jobs/' + id, payload);
+        } else {
+          await API.post('/api/jobs', payload);
+        }
+        closeModal();
+        await loadJobs();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function deleteJob(id) {
+      if (!confirm('Delete job #' + id + '?')) return;
+      try {
+        await API.delete('/api/jobs/' + id);
+        await loadJobs();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    // ── Init ─────────────────────────────────────────────
+    (function () {
+      var user = API.getUser();
+      if (user) {
+        document.getElementById('headerUser').textContent = user.full_name || user.email;
+      }
+      loadJobs();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AlgoTalent - Data Analysis</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <style>
+    body { width: 100vw; height: 100vh; overflow: hidden; }
+    .content-wrapper { height: calc(100vh - 8rem); overflow-y: auto; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <span class="text-xl font-bold text-blue-600">AlgoTalent</span>
+        </div>
+        <div class="flex items-center space-x-6">
+          <button onclick="API.logout()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b border-gray-200">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8 pt-4 pb-2">
+        <a href="job-management.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-users mr-2"></i> Job Management
+        </a>
+        <a href="data-analysis.html" class="text-blue-600 border-b-2 border-blue-600 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-bar-chart mr-2"></i> Data Analysis
+        </a>
+        <a href="content-security.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-shield mr-2"></i> Content and Security Monitoring
+        </a>
+        <a href="index.html" class="text-gray-500 hover:text-gray-900 px-1 py-2 text-sm font-medium flex items-center">
+          <i class="fa fa-chevron-down mr-2"></i> Log and Performance Monitoring
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content-wrapper max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Jobs vs Candidates</h2>
+        <p class="text-xs text-gray-500 mb-4">Distribution overview</p>
+        <div class="flex justify-center h-48">
+          <canvas id="categoryPieChart"></canvas>
+        </div>
+        <div class="flex justify-center space-x-6 mt-2">
+          <div class="flex items-center"><span class="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>Jobs</div>
+          <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-1"></span>Candidates</div>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Applications by Job</h2>
+        <p class="text-xs text-gray-500 mb-4">Bar chart of applications per job title</p>
+        <div class="h-48"><canvas id="positionsBarChart"></canvas></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Application Status Distribution</h2>
+        <p class="text-xs text-gray-500 mb-4">Line chart of status counts</p>
+        <div class="h-48"><canvas id="trendLineChart"></canvas></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">System Overview</h2>
+        <p class="text-xs text-gray-500 mb-4">Key metrics at a glance</p>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-blue-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-blue-600" id="countUsers">—</div>
+            <div class="text-xs text-gray-500 mt-1">Users</div>
+          </div>
+          <div class="bg-green-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-green-600" id="countJobs">—</div>
+            <div class="text-xs text-gray-500 mt-1">Jobs</div>
+          </div>
+          <div class="bg-purple-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-purple-600" id="countCandidates">—</div>
+            <div class="text-xs text-gray-500 mt-1">Candidates</div>
+          </div>
+          <div class="bg-yellow-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-yellow-600" id="countApps">—</div>
+            <div class="text-xs text-gray-500 mt-1">Applications</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    var chartInstances = {};
+
+    function destroyChart(id) { if (chartInstances[id]) { chartInstances[id].destroy(); } }
+
+    async function loadAnalytics() {
+      try {
+        var data = await API.get('/api/analytics/summary');
+
+        // Update counters
+        document.getElementById('countUsers').textContent = data.counts.users || 0;
+        document.getElementById('countJobs').textContent = data.counts.jobs || 0;
+        document.getElementById('countCandidates').textContent = data.counts.candidates || 0;
+        document.getElementById('countApps').textContent = data.counts.applications || 0;
+
+        // Pie chart
+        destroyChart('categoryPieChart');
+        var pieCtx = document.getElementById('categoryPieChart').getContext('2d');
+        chartInstances.categoryPieChart = new Chart(pieCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Jobs', 'Candidates'],
+            datasets: [{
+              data: [data.counts.jobs || 0, data.counts.candidates || 0],
+              backgroundColor: ['#3B82F6', '#10B981'],
+              borderWidth: 0
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } } }
+        });
+
+        // Bar chart
+        destroyChart('positionsBarChart');
+        var barCtx = document.getElementById('positionsBarChart').getContext('2d');
+        var jobsData = data.jobs_by_title || [];
+        chartInstances.positionsBarChart = new Chart(barCtx, {
+          type: 'bar',
+          data: {
+            labels: jobsData.map(function(j) { return j.title; }),
+            datasets: [{
+              label: 'Apps', data: jobsData.map(function(j) { return j.count; }),
+              backgroundColor: '#3B82F6', borderRadius: 2, barPercentage: 0.8
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, font: { size: 9 } } } },
+            plugins: { legend: { display: false } }
+          }
+        });
+
+        // Line chart
+        destroyChart('trendLineChart');
+        var lineCtx = document.getElementById('trendLineChart').getContext('2d');
+        var statusData = data.applications_by_status || {};
+        var labels = Object.keys(statusData);
+        var values = labels.map(function(k) { return statusData[k]; });
+        chartInstances.trendLineChart = new Chart(lineCtx, {
+          type: 'line',
+          data: {
+            labels: labels, datasets: [{
+              label: 'Count', data: values,
+              borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.1)',
+              tension: 0.4, fill: true
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true }, x: { ticks: { font: { size: 8 }, maxRotation: 30 } } },
+            plugins: { legend: { display: false } }
+          }
+        });
+      } catch (e) {
+        console.error('Failed to load analytics:', e);
+      }
+    }
+
+    loadAnalytics();
+  </script>
+</body>
+</html>

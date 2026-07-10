@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AlgoTalent – Log and Performance Monitoring</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 顶部导航栏 -->
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <div class="logo">AlgoTalent</div>
+<nav class="main-nav">
+  <a href="job-management.html" class="nav-link">Job Management</a>
+  <a href="data-analysis.html" class="nav-link">Data Analysis</a>
+  <a href="content-security.html" class="nav-link active">Content and Security Monitoring</a>
+  <a href="index.html" class="nav-link">Log and Performance Monitoring</a>
+</nav>
+
+    </div>
+    <div class="top-bar-right">
+      <span class="subtitle">AI-Powered Recruitment</span>
+      <button id="logoutBtn" class="btn btn-logout">Logout</button>
+    </div>
+  </header>
+  <!-- 页面主体 -->
+  <main class="page">
+    <!-- 搜索 + 筛选 -->
+    <section class="toolbar">
+      <div class="search-wrapper">
+        <span class="search-icon">&#128269;</span>
+        <input
+>
+  </header
+>
+  <!-- 页面主体 -->
+  <main class="page">
+    <!-- 搜索 + 筛选 -->
+    <section class="toolbar">
+      <div class="search-wrapper">
+        <span class="search-icon">&#128269;</span>
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Search user, job, or content snippet..."
+        />
+      </div>
+
+      <div class="toolbar-right">
+        <div class="select-wrapper">
+          <select class="select">
+            <option value="all">All risk levels</option>
+            <option value="high">High risk</option>
+            <option value="medium">Medium risk</option>
+            <option value="low">Low risk</option>
+          </select>
+          <span class="select-arrow">&#9662;</span>
+        </div>
+        <div class="select-wrapper">
+          <select class="select">
+            <option value="24h">Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+          </select>
+          <span class="select-arrow">&#9662;</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 概览指标 -->
+    <section class="cs-summary-grid">
+      <div class="card cs-summary-card">
+        <div class="cs-summary-title">Flagged items (24h)</div>
+        <div class="cs-summary-number">42</div>
+        <div class="cs-summary-footer">
+          <span class="cs-summary-tag cs-tag-up">+18% vs yesterday</span>
+          <span class="cs-summary-sub">Most from job posts and chat</span>
+        </div>
+      </div>
+      <div class="card cs-summary-card">
+        <div class="cs-summary-title">High-risk incidents</div>
+        <div class="cs-summary-number cs-summary-number-danger">7</div>
+        <div class="cs-summary-footer">
+          <span class="cs-summary-tag cs-tag-critical">Immediate review</span>
+          <span class="cs-summary-sub">Auto-notified security team</span>
+        </div>
+      </div>
+      <div class="card cs-summary-card">
+        <div class="cs-summary-title">Average time to review</div>
+        <div class="cs-summary-number">11 min</div>
+        <div class="cs-summary-footer">
+          <span class="cs-summary-tag cs-tag-ok">Within SLA</span>
+          <span class="cs-summary-sub">Target: &lt; 15 min</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 内容违规列表 -->
+    <section class="card cs-card">
+      <div class="cs-card-header">
+        <div>
+          <h2 class="cs-card-title">Content violation overview</h2>
+          <p class="cs-card-subtitle">
+            AI and rules engine automatically flag potentially unsafe or non-compliant content.
+          </p>
+        </div>
+        <button class="btn btn-primary">Export report</button>
+      </div>
+
+      <table class="logs-table cs-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Type</th>
+            <th>Owner</th>
+            <th>Risk level</th>
+            <th>Reason</th>
+            <th>Last action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>#2419 – Job post: Senior Data Engineer</td>
+            <td>Job post</td>
+            <td>Ana Chen</td>
+            <td>
+              <span class="badge badge-risk-high">
+                <span class="badge-dot"></span>
+                High
+              </span>
+            </td>
+            <td>Potential discriminatory language</td>
+            <td>Escalated to compliance · 5 min ago</td>
+          </tr>
+          <tr>
+            <td>#9872 – Candidate chat with recruiter</td>
+            <td>Chat</td>
+            <td>System</td>
+            <td>
+              <span class="badge badge-risk-medium">
+                <span class="badge-dot"></span>
+                Medium
+              </span>
+            </td>
+            <td>Possible sensitive personal data shared</td>
+            <td>Waiting for reviewer · 12 min ago</td>
+          </tr>
+          <tr>
+            <td>#5631 – Company review reply</td>
+            <td>Comment</td>
+            <td>John Park</td>
+            <td>
+              <span class="badge badge-risk-low">
+                <span class="badge-dot"></span>
+                Low
+              </span>
+            </td>
+            <td>Off-topic / spam-like wording</td>
+            <td>Auto-muted · 35 min ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 安全事件列表 -->
+    <section class="card cs-card">
+      <div class="cs-card-header">
+        <div>
+          <h2 class="cs-card-title">Security alerts</h2>
+          <p class="cs-card-subtitle">
+            Login anomalies, permission abuse, and suspicious bulk actions across the platform.
+          </p>
+        </div>
+      </div>
+
+      <table class="logs-table cs-table">
+        <thead>
+          <tr>
+            <th>Alert</th>
+            <th>User</th>
+            <th>Location / IP</th>
+            <th>Severity</th>
+            <th>Status</th>
+            <th>Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Multiple failed logins followed by success</td>
+            <td>recruiter_julia</td>
+            <td>Berlin · 185.34.21.10</td>
+            <td>
+              <span class="badge badge-risk-high">
+                <span class="badge-dot"></span>
+                High
+              </span>
+            </td>
+            <td>
+              <span class="cs-status-chip cs-status-open">Open</span>
+            </td>
+            <td>9 min ago</td>
+          </tr>
+          <tr>
+            <td>Bulk export of candidate profiles</td>
+            <td>hiring_manager_02</td>
+            <td>London · 80.21.7.3</td>
+            <td>
+              <span class="badge badge-risk-medium">
+                <span class="badge-dot"></span>
+                Medium
+              </span>
+            </td>
+            <td>
+              <span class="cs-status-chip cs-status-investigating">Investigating</span>
+            </td>
+            <td>26 min ago</td>
+          </tr>
+          <tr>
+            <td>Login from new device</td>
+            <td>admin_root</td>
+            <td>Tokyo · 210.140.92.18</td>
+            <td>
+              <span class="badge badge-risk-low">
+                <span class="badge-dot"></span>
+                Low
+              </span>
+            </td>
+            <td>
+              <span class="cs-status-chip cs-status-resolved">Resolved</span>
+            </td>
+            <td>1 h ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    document.getElementById('logoutBtn').addEventListener('click', function () { API.logout(); });
+  </script>
+</body>
+</html>

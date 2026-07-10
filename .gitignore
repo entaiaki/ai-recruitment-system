@@ -43,6 +43,7 @@ _backup/
 剩余优化清单.md
 SKILL.md
 _check_*.py
+_test_*.py
 backend/tests/test_ai_service.py
 backend/tests/test_routes.py
 *.png  

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AlgoTalent — Log and Performance Monitoring</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <div class="logo">AlgoTalent</div>
+      <nav class="main-nav">
+        <a href="job-management.html" class="nav-link">Job Management</a>
+        <a href="data-analysis.html" class="nav-link">Data Analysis</a>
+        <a href="content-security.html" class="nav-link">Content and Security Monitoring</a>
+        <a href="index.html" class="nav-link active">Log and Performance Monitoring</a>
+      </nav>
+    </div>
+    <div class="top-bar-right">
+      <span class="subtitle">AI-Powered Recruitment</span>
+      <button id="logoutBtn" class="btn btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="toolbar">
+      <div class="search-wrapper">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search logs...">
+      </div>
+      <div class="toolbar-right">
+        <div class="select-wrapper">
+          <select id="statusFilter" class="select">
+            <option value="all">Filter by status</option>
+            <option value="success">Success</option>
+            <option value="warning">Warning</option>
+            <option value="wrong">Wrong</option>
+          </select>
+          <span class="select-arrow">&#9662;</span>
+        </div>
+        <button id="exportButton" class="btn btn-primary">Export logs</button>
+      </div>
+    </section>
+
+    <section class="card logs-card">
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Search ID</th>
+            <th>Inquire statement</th>
+            <th>Run time</th>
+            <th>State</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody id="logsBody">
+          <tr><td colspan="5" class="text-center text-gray-400">Loading logs...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    var logsData = [];
+
+    async function loadLogs() {
+      try {
+        var data = await API.get('/api/logs?page=1&page_size=100');
+        logsData = data.items || data;
+        renderLogs(logsData);
+      } catch (e) {
+        console.error('Failed to load logs:', e);
+        document.getElementById('logsBody').innerHTML =
+          '<tr><td colspan="5" class="text-center text-red-400">Failed to load logs</td></tr>';
+      }
+    }
+
+    function renderLogs(list) {
+      var tbody = document.getElementById('logsBody');
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400">No logs found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(function (log) {
+        var badgeClass = 'badge-' + log.status;
+        var label = log.status.charAt(0).toUpperCase() + log.status.slice(1);
+        return '<tr>'
+          + '<td>' + log.id + '</td>'
+          + '<td>' + (log.statement || '') + '</td>'
+          + '<td>' + (log.runTime || '—') + '</td>'
+          + '<td><span class="badge ' + badgeClass + '"><span class="badge-dot"></span>' + label + '</span></td>'
+          + '<td>' + (log.timestamp || '') + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    function applyFilters() {
+      var keyword = (document.getElementById('searchInput').value || '').toLowerCase();
+      var status = document.getElementById('statusFilter').value;
+      var filtered = logsData.filter(function (log) {
+        var matchText = !keyword || (log.statement || '').toLowerCase().indexOf(keyword) >= 0;
+        var matchStatus = status === 'all' || log.status === status;
+        return matchText && matchStatus;
+      });
+      renderLogs(filtered);
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+      API.logout();
+    });
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+    document.getElementById('statusFilter').addEventListener('change', applyFilters);
+    document.getElementById('exportButton').addEventListener('click', function () {
+      var csv = 'ID,Statement,Status,Timestamp\n' + logsData.map(function (l) {
+        return [l.id, '"' + (l.statement || '') + '"', l.status, l.timestamp].join(',');
+      }).join('\n');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'logs_export.csv';
+      a.click();
+    });
+
+    loadLogs();
+  </script>
+</body>
+</html>
