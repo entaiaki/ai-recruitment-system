@@ -29,6 +29,7 @@ backend/uploads/
 # 前端
 frontend/node_modules/
 frontend/dist/
+backend/static_react/
 
 # 临时文件
 *.log
