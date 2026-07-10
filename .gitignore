@@ -31,6 +31,9 @@ frontend/node_modules/
 frontend/dist/
 backend/static_react/
 
+# 部署构建产物
+deploy/
+
 # 临时文件
 *.log
 _backup/
