@@ -18,7 +18,7 @@ export default function MainLayout() {
     { key: '/jobs', icon: <ProjectOutlined />, label: '岗位管理' },
     { key: '/candidates', icon: <TeamOutlined />, label: '候选人' },
     { key: '/applications', icon: <FileTextOutlined />, label: '投递管理' },
-    ...(user?.role === 'admin' ? [{ key: '/llm-config', icon: <SettingOutlined />, label: 'LLM 配置' }] : []),
+    { key: '/llm-config', icon: <SettingOutlined />, label: 'LLM 配置' },
   ]
 
   const handleLogout = () => { clearAuth(); navigate('/login') }
